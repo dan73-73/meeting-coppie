@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meeting Coppie</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d0d1a; font-family: Georgia, serif; color: #e8dcc8; min-height: 100vh; }
+button { font-family: Georgia, serif; }
+textarea, input, select { font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
+  authDomain: "meeting---coppie.firebaseapp.com",
+  projectId: "meeting---coppie",
+  storageBucket: "meeting---coppie.firebasestorage.app",
+  messagingSenderId: "1027854978190",
+  appId: "1:1027854978190:web:a368caebc29bb1013e0ddf"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const firestore = getFirestore(firebaseApp);
+
+const DEFAULT_SECTIONS = [
+  { id: "ven-sera", label: "Venerdì sera", icon: "🌙", order: 1 },
+  { id: "sab-mat", label: "Sabato mattina", icon: "🌅", order: 2 },
+  { id: "sab-pom", label: "Sabato pomeriggio", icon: "☀️", order: 3 },
+  { id: "sab-sera", label: "Sabato sera", icon: "🌆", order: 4 },
+  { id: "dom-mat", label: "Domenica mattina", icon: "🙏", order: 5 },
+];
+const DEFAULT_STATE = { activeShareId: null, shares: [], sections: DEFAULT_SECTIONS };
+
+async function saveState(state) {
+  await setDoc(doc(firestore, "state", "main"), state);
+}
+function subscribeState(cb) {
+  return onSnapshot(doc(firestore, "state", "main"), (snap) => {
+    if (snap.exists()) cb(snap.data());
+    else cb(DEFAULT_STATE);
+  });
+}
+async function initState() {
+  const snap = await getDoc(doc(firestore, "state", "main"));
+  if (!snap.exists()) await saveState(DEFAULT_STATE);
+}
+
+const LANG_NAMES = { it: "Italiano", en: "English", fr: "Français", es: "Español", pt: "Português" };
+const LANG_FLAGS = { it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", es: "🇪🇸", pt: "🇵🇹" };
+const UI_LABELS = {
+  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", by: "Condivisione guidata dall'amministratore" },
+  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", by: "Sharing guided by the administrator" },
+  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", by: "Partage guidé par l'administrateur" },
+  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", by: "Compartición guiada por el administrador" },
+  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", by: "Partilha guiada pelo administrador" },
+};
+const ADMIN_PIN = "1234";
+
+async function translateWithAI(itTitle, itBody) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: `Translate this Italian text into English, French, Spanish, and European Portuguese. Return ONLY valid JSON, no markdown, no backticks:\n{"en":{"title":"...","body":"..."},"fr":{"title":"...","body":"..."},"es":{"title":"...","body":"..."},"pt":{"title":"...","body":"..."}}\n\nItalian title: ${itTitle}\nItalian body: ${itBody}` }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.[0]?.text || "{}";
+    return JSON.parse(raw.replace(/```[a-z]*\n?/gi,"").replace(/```/g,"").trim());
+  } catch(e) {
+    return { en:{title:itTitle,body:itBody}, fr:{title:itTitle,body:itBody}, es:{title:itTitle,body:itBody}, pt:{title:itTitle,body:itBody} };
+  }
+}
+
+let appState = { ...DEFAULT_STATE };
+let currentView = window.location.hash === "#couple" ? "couple" : "admin";
+let coupleLang = null;
+let adminAuth = false;
+let adminTab = "list";
+let adminForm = null;
+let adminEditId = null;
+let filterSection = "all";
+let newSecLabel = "";
+let newSecIcon = "✨";
+
+window.addEventListener("hashchange", () => {
+  currentView = window.location.hash === "#couple" ? "couple" : "admin";
+  render();
+});
+
+function e(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith("on")) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === "style") Object.assign(el.style, v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v);
+  }
+  for (const child of children.flat()) {
+    if (child == null) continue;
+    el.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return el;
+}
+
+function renderCouple() {
+  const active = appState.shares?.find(s => s.id === appState.activeShareId);
+  const section = active ? appState.sections?.find(s => s.id === active.sectionId) : null;
+  const content = active && coupleLang ? (active.translations?.[coupleLang]?.title ? active.translations[coupleLang] : active.translations?.it) : null;
+  const ui = UI_LABELS[coupleLang || "it"];
+
+  if (!coupleLang) {
+    const grid = e("div", { style: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" } },
+      ...Object.entries(LANG_NAMES).map(([code, name]) =>
+        e("button", {
+          style: { display:"flex", flexDirection:"column", alignItems:"center", gap:"6px", padding:"16px 12px", borderRadius:"14px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(200,169,110,0.06)", cursor:"pointer", color:"#e8dcc8" },
+          onClick: () => { coupleLang = code; render(); }
+        }, e("span", { style:{fontSize:"30px"} }, LANG_FLAGS[code]), e("span", { style:{fontSize:"14px"} }, name))
+      )
+    );
+    return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
+      e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
+        e("div", { style:{textAlign:"center", fontSize:"52px", marginBottom:"6px"} }, "💞"),
+        e("h2", { style:{textAlign:"center", fontSize:"20px", color:"#c8a96e", fontWeight:"400", marginBottom:"28px", letterSpacing:"1px"} }, UI_LABELS.it.choose),
+        grid
+      )
+    );
+  }
+
+  const backBtn = e("button", {
+    style:{display:"inline-flex", alignItems:"center", gap:"6px", background:"transparent", border:"1px solid rgba(200,169,110,0.3)", color:"#c8a96e", borderRadius:"20px", padding:"4px 14px", cursor:"pointer", fontSize:"13px", marginBottom:"24px"},
+    onClick: () => { coupleLang = null; render(); }
+  }, LANG_FLAGS[coupleLang] + " " + LANG_NAMES[coupleLang] + " ✕");
+
+  let body;
+  if (!active) {
+    body = e("div", { style:{textAlign:"center", padding:"40px 0"} },
+      e("div", { style:{fontSize:"48px", marginBottom:"16px"} }, "⏳"),
+      e("p", { style:{color:"#a09080", fontSize:"17px", lineHeight:"1.6"} }, ui.waiting)
+    );
+  } else {
+    const parts = [
+      section ? e("div", { style:{display:"inline-block", padding:"4px 14px", borderRadius:"20px", background:"rgba(200,169,110,0.12)", border:"1px solid rgba(200,169,110,0.25)", color:"#c8a96e", fontSize:"13px", marginBottom:"16px"} }, section.icon + " " + section.label) : null,
+      e("h2", { style:{fontSize:"23px", fontWeight:"600", color:"#e8dcc8", marginBottom:"14px", lineHeight:"1.35"} }, content?.title || "—"),
+      e("p", { style:{fontSize:"16px", lineHeight:"1.8", color:"#c8b89a", marginBottom:"16px", whiteSpace:"pre-wrap"} }, content?.body || ""),
+    ];
+    if (active.imageUrl) parts.push(e("img", { src:active.imageUrl, style:{width:"100%", borderRadius:"14px", marginBottom:"16px", maxHeight:"300px", objectFit:"cover"} }));
+    parts.push(e("div", { style:{fontSize:"11px", color:"#706050", textAlign:"center", letterSpacing:"1px", marginTop:"16px"} }, ui.by));
+    body = e("div", {}, ...parts.filter(Boolean));
+  }
+
+  return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
+    e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
+      backBtn, body
+    )
+  );
+}
+
+function renderAdmin() {
+  if (!adminAuth) {
+    const pinInput = e("input", { type:"password", placeholder:"PIN admin", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"18px", textAlign:"center", letterSpacing:"6px"} });
+    const errMsg = e("p", { style:{color:"#ff6b6b", fontSize:"13px", marginTop:"6px", display:"none"} }, "PIN errato");
+    const tryLogin = () => {
+      if (pinInput.value === ADMIN_PIN) { adminAuth = true; render(); }
+      else { errMsg.style.display = "block"; }
+    };
+    pinInput.addEventListener("keydown", ev => ev.key === "Enter" && tryLogin());
+    return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center"} },
+      e("div", { style:{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(200,169,110,0.2)", borderRadius:"20px", padding:"40px 32px", textAlign:"center", width:"300px"} },
+        e("div", { style:{fontSize:"42px", marginBottom:"8px"} }, "🔐"),
+        e("h2", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px", fontWeight:"400"} }, "Area Amministratore"),
+        pinInput, errMsg,
+        e("button", { style:{marginTop:"16px", width:"100%", padding:"10px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"16px"}, onClick:tryLogin }, "Accedi")
+      )
+    );
+  }
+
+  const sections = [...(appState.sections || [])].sort((a,b) => a.order - b.order);
+  const activeShare = appState.shares?.find(s => s.id === appState.activeShareId);
+  const activeSection = activeShare ? sections.find(s => s.id === activeShare.sectionId) : null;
+  const coupleUrl = window.location.href.replace(/#.*/,"") + "#couple";
+
+  const tabBtn = (t, label) => e("button", {
+    style:{padding:"6px 14px", borderRadius:"20px", border:`1px solid ${adminTab===t?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:adminTab===t?"rgba(200,169,110,0.15)":"transparent", color:adminTab===t?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px"},
+    onClick: () => { if(t==="add") openNewForm(null); else { adminTab=t; render(); } }
+  }, label);
+
+  const header = e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 20px", background:"rgba(200,169,110,0.05)", borderBottom:"1px solid rgba(200,169,110,0.12)", flexWrap:"wrap"} },
+    e("span", { style:{fontSize:"17px", color:"#c8a96e", fontWeight:"600", whiteSpace:"nowrap"} }, "💞 Meeting Admin"),
+    e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
+      tabBtn("list","📋 Condivisioni"), tabBtn("add","➕ Nuova"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
+    ),
+    e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:()=>{adminAuth=false;render();} }, "Esci")
+  );
+
+  let bodyContent;
+
+  if (adminTab === "list") {
+    const statusBar = e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 16px", borderRadius:"10px", background:"rgba(200,169,110,0.06)", marginBottom:"20px", fontSize:"14px", color:"#a09080"} },
+      e("span", { style:{width:"10px", height:"10px", borderRadius:"50%", flexShrink:"0", background:appState.activeShareId?"#4caf50":"#555", boxShadow:appState.activeShareId?"0 0 6px #4caf50":"none", display:"inline-block"} }),
+      appState.activeShareId
+        ? `Attiva: ${activeSection?.icon||""} ${activeSection?.label||""} — "${activeShare?.translations?.it?.title||""}"`
+        : "Nessuna condivisione attiva — le coppie vedono la schermata di attesa"
+    );
+
+    const filters = e("div", { style:{display:"flex", gap:"8px", marginBottom:"18px", flexWrap:"wrap"} },
+      e("button", { style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${filterSection==="all"?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:filterSection==="all"?"rgba(200,169,110,0.15)":"transparent", color:filterSection==="all"?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"}, onClick:()=>{filterSection="all";render();} }, "Tutte"),
+      ...sections.map(sec => e("button", {
+        style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${filterSection===sec.id?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:filterSection===sec.id?"rgba(200,169,110,0.15)":"transparent", color:filterSection===sec.id?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"},
+        onClick:()=>{filterSection=sec.id;render();}
+      }, sec.icon+" "+sec.label))
+    );
+
+    const grouped = sections
+      .filter(sec => filterSection==="all" || sec.id===filterSection)
+      .map(sec => {
+        const shares = (appState.shares||[]).filter(s=>s.sectionId===sec.id);
+        const secHeader = e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:"15px", color:"#c8a96e", fontWeight:"600", marginBottom:"8px", paddingBottom:"6px", borderBottom:"1px solid rgba(200,169,110,0.15)"} },
+          e("span", {}, sec.icon+" "+sec.label+" "),
+          e("span", { style:{fontSize:"12px", color:"#706050", fontWeight:"400"} }, `(${shares.length})`),
+          e("button", {
+            style:{padding:"3px 12px", borderRadius:"16px", border:"1px solid rgba(200,169,110,0.4)", background:"rgba(200,169,110,0.1)", color:"#c8a96e", cursor:"pointer", fontSize:"13px", fontWeight:"600"},
+            onClick:()=>openNewForm(sec.id)
+          }, "➕ Aggiungi")
+        );
+        const shareRows = shares.length===0
+          ? [e("div", { style:{color:"#504040", fontSize:"13px", padding:"6px 0"} }, "Nessuna condivisione in questa sezione")]
+          : shares.map(share => {
+            const isActive = share.id === appState.activeShareId;
+            return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isActive?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isActive?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
+              e("div", { style:{flex:"1"} },
+                e("strong", { style:{color:"#e8dcc8"} }, share.translations?.it?.title||"—"),
+                e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
+                  Object.keys(LANG_FLAGS).filter(l=>share.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ") + (share.imageUrl?" 🖼️":"")
+                )
+              ),
+              e("div", { style:{display:"flex", gap:"6px", alignItems:"center"} },
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openEditForm(share) }, "✏️"),
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
+                e("button", {
+                  style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isActive?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isActive?"rgba(76,175,80,0.2)":"transparent", color:isActive?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                  onClick:()=>activateShare(share.id)
+                }, isActive?"● ATTIVA":"Attiva")
+              )
+            );
+          });
+        return e("div", { style:{marginBottom:"28px"} }, secHeader, ...shareRows);
+      });
+
+    bodyContent = e("div", {}, statusBar, filters, ...grouped);
+  }
+
+  else if (adminTab === "add" && adminForm) {
+    const inp = (placeholder, val, onChange) => {
+      const el = e("input", { placeholder, style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+      el.value = val||"";
+      el.addEventListener("input", ev => onChange(ev.target.value));
+      return el;
+    };
+    const ta = (placeholder, val, onChange) => {
+      const el = e("textarea", { placeholder, rows:"3", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"14px", resize:"vertical", lineHeight:"1.6"} });
+      el.value = val||"";
+      el.addEventListener("input", ev => onChange(ev.target.value));
+      return el;
+    };
+
+    const sel = e("select", { style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"#1a1a2e", color:"#e8dcc8", fontSize:"15px"} },
+      ...sections.map(sec => {
+        const opt = e("option", { value:sec.id }, sec.icon+" "+sec.label);
+        if (adminForm.sectionId===sec.id) opt.selected=true;
+        return opt;
+      })
+    );
+    sel.addEventListener("change", ev => { adminForm.sectionId=ev.target.value; });
+
+    const translateBtn = e("button", {
+      style:{marginTop:"16px", width:"100%", padding:"11px", borderRadius:"10px", border:"1px solid rgba(100,180,255,0.35)", background:"rgba(100,180,255,0.07)", color:"#90c8ff", cursor:"pointer", fontSize:"14px", fontWeight:"600"},
+      onClick: async () => {
+        if (!adminForm.translations.it.title && !adminForm.translations.it.body) { alert("Inserisci prima il testo italiano!"); return; }
+        translateBtn.textContent = "⏳ Traduzione in corso…";
+        translateBtn.disabled = true;
+        const translated = await translateWithAI(adminForm.translations.it.title, adminForm.translations.it.body);
+        Object.assign(adminForm.translations, translated);
+        render();
+      }
+    }, "🤖 Traduci automaticamente nelle altre 4 lingue");
+
+    const langBlocks = ["en","fr","es","pt"].map(code =>
+      e("div", { style:{marginTop:"16px", paddingTop:"16px", borderTop:"1px solid rgba(200,169,110,0.1)"} },
+        e("div", { style:{fontSize:"14px", color:"#a09080", marginBottom:"8px"} }, LANG_FLAGS[code]+" "+LANG_NAMES[code]),
+        inp("Titolo", adminForm.translations[code]?.title, v=>{ adminForm.translations[code].title=v; }),
+        e("div", { style:{marginTop:"8px"} }, ta("Testo…", adminForm.translations[code]?.body, v=>{ adminForm.translations[code].body=v; }))
+      )
+    );
+
+    bodyContent = e("div", { style:{maxWidth:"620px"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px"} }, adminEditId?"✏️ Modifica condivisione":"➕ Nuova condivisione"),
+      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px"} }, "Sezione del weekend"),
+      sel,
+      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px", marginTop:"16px"} }, "URL immagine (opzionale)"),
+      inp("https://…", adminForm.imageUrl, v=>{ adminForm.imageUrl=v; }),
+      e("div", { style:{marginTop:"20px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.35)", background:"rgba(200,169,110,0.05)"} },
+        e("div", { style:{fontSize:"15px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "🇮🇹 Italiano — testo di partenza"),
+        inp("Titolo", adminForm.translations.it.title, v=>{ adminForm.translations.it.title=v; }),
+        e("div", { style:{marginTop:"10px"} }, ta("Testo della condivisione…", adminForm.translations.it.body, v=>{ adminForm.translations.it.body=v; }))
+      ),
+      translateBtn,
+      ...langBlocks,
+      e("div", { style:{display:"flex", gap:"12px", marginTop:"24px"} },
+        e("button", { style:{padding:"10px 28px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"15px"}, onClick:saveForm }, "💾 Salva"),
+        e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer", fontSize:"15px"}, onClick:()=>{adminTab="list";adminForm=null;render();} }, "Annulla")
+      )
+    );
+  }
+
+  else if (adminTab === "sections") {
+    const secRows = sections.map(sec =>
+      e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+        e("span", { style:{fontSize:"22px"} }, sec.icon),
+        e("span", { style:{flex:"1", color:"#e8dcc8"} }, sec.label),
+        e("span", { style:{fontSize:"12px", color:"#706050"} }, (appState.shares||[]).filter(s=>s.sectionId===sec.id).length+" condivisioni"),
+        e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteSection(sec.id) }, "🗑️")
+      )
+    );
+    const iconInput = e("input", { placeholder:"Emoji", style:{width:"70px", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    iconInput.value = newSecIcon;
+    iconInput.addEventListener("input", ev=>{ newSecIcon=ev.target.value; });
+    const labelInput = e("input", { placeholder:"Nome sezione (es. Sabato notte)", style:{flex:"1", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    labelInput.value = newSecLabel;
+    labelInput.addEventListener("input", ev=>{ newSecLabel=ev.target.value; });
+    labelInput.addEventListener("keydown", ev=>ev.key==="Enter"&&addSection());
+
+    bodyContent = e("div", { style:{maxWidth:"560px"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "🗂️ Sezioni del weekend"),
+      e("p", { style:{color:"#a09080", fontSize:"14px", marginBottom:"20px"} }, "Aggiungi, rinomina o elimina le sezioni."),
+      ...secRows,
+      e("div", { style:{marginTop:"24px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.2)", background:"rgba(200,169,110,0.04)"} },
+        e("div", { style:{fontSize:"14px", color:"#c8a96e", marginBottom:"12px"} }, "➕ Aggiungi nuova sezione"),
+        e("div", { style:{display:"flex", gap:"10px", flexWrap:"wrap"} },
+          iconInput, labelInput,
+          e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer"}, onClick:addSection }, "Aggiungi")
+        )
+      )
+    );
+  }
+
+  else if (adminTab === "qr") {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(coupleUrl)}&bgcolor=0d0d1a&color=c8a96e&margin=12`;
+    bodyContent = e("div", { style:{textAlign:"center", padding:"20px 0"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"12px"} }, "📲 QR Code per le coppie"),
+      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare. Scelgono la lingua e vedono solo la condivisione che tu attivi."),
+      e("div", { style:{display:"flex", justifyContent:"center", marginBottom:"16px"} },
+        e("img", { src:qrUrl, style:{width:"200px", height:"200px", borderRadius:"14px", border:"2px solid rgba(200,169,110,0.35)"} })
+      ),
+      e("p", { style:{fontSize:"12px", color:"#706050", wordBreak:"break-all", marginBottom:"20px"} }, coupleUrl),
+      e("div", { style:{display:"inline-block", padding:"12px 20px", borderRadius:"12px", background:"rgba(200,169,110,0.08)", border:"1px solid rgba(200,169,110,0.2)", fontSize:"14px", color:"#c8a96e", maxWidth:"460px"} },
+        "💡 Proietta questo schermo oppure stampa il QR e distribuiscilo prima del meeting."
+      )
+    );
+  }
+
+  return e("div", { style:{minHeight:"100vh", display:"flex", flexDirection:"column"} },
+    header,
+    e("div", { style:{flex:"1", padding:"20px", maxWidth:"820px", width:"100%", margin:"0 auto"} }, bodyContent||e("div",{}))
+  );
+}
+
+async function activateShare(id) {
+  const newState = { ...appState, activeShareId: appState.activeShareId===id ? null : id };
+  await saveState(newState);
+}
+async function deleteShare(id) {
+  const newState = { ...appState, shares:(appState.shares||[]).filter(s=>s.id!==id), activeShareId:appState.activeShareId===id?null:appState.activeShareId };
+  await saveState(newState);
+}
+function openNewForm(sectionId) {
+  adminForm = {
+    sectionId: sectionId || (appState.sections||[])[0]?.id || "ven-sera",
+    imageUrl: "",
+    translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
+  };
+  adminEditId = null;
+  adminTab = "add";
+  render();
+}
+function openEditForm(share) {
+  adminForm = {
+    sectionId: share.sectionId || (appState.sections||[])[0]?.id || "",
+    imageUrl: share.imageUrl||"",
+    translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...share.translations }
+  };
+  adminEditId = share.id;
+  adminTab = "add";
+  render();
+}
+async function saveForm() {
+  if (!adminForm) return;
+  let shares = [...(appState.shares||[])];
+  if (adminEditId) {
+    shares = shares.map(s => s.id===adminEditId ? {...s,...adminForm,id:adminEditId} : s);
+  } else {
+    shares.push({ ...adminForm, id:"s"+Date.now() });
+  }
+  await saveState({ ...appState, shares });
+  adminTab="list"; adminForm=null; adminEditId=null; render();
+}
+async function addSection() {
+  if (!newSecLabel.trim()) return;
+  const newSec = { id:"sec-"+Date.now(), label:newSecLabel.trim(), icon:newSecIcon||"📌", order:(appState.sections?.length||0)+1 };
+  await saveState({ ...appState, sections:[...(appState.sections||[]), newSec] });
+  newSecLabel=""; newSecIcon="✨"; render();
+}
+async function deleteSection(id) {
+  await saveState({ ...appState, sections:(appState.sections||[]).filter(s=>s.id!==id) });
+}
+
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  const demoBar = e("div", { style:{display:"flex", alignItems:"center", gap:"8px", padding:"8px 16px", background:"rgba(200,169,110,0.06)", borderBottom:"1px solid rgba(200,169,110,0.12)", fontSize:"13px"} },
+    e("span", { style:{color:"#c8a96e", marginRight:"4px"} }, "Vista:"),
+    e("button", {
+      style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${currentView==="admin"?"#c8a96e":"rgba(200,169,110,0.3)"}`, background:currentView==="admin"?"rgba(200,169,110,0.2)":"transparent", color:"#c8a96e", cursor:"pointer", fontSize:"13px"},
+      onClick:()=>{window.location.hash="";currentView="admin";render();}
+    }, "🔐 Admin"),
+    e("button", {
+      style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${currentView==="couple"?"#c8a96e":"rgba(200,169,110,0.3)"}`, background:currentView==="couple"?"rgba(200,169,110,0.2)":"transparent", color:"#c8a96e", cursor:"pointer", fontSize:"13px"},
+      onClick:()=>{window.location.hash="couple";currentView="couple";render();}
+    }, "💞 Vista Coppie")
+  );
+
+  app.appendChild(demoBar);
+  app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
+}
+
+await initState();
+subscribeState(state => { appState = state; render(); });
+</script>
+</body>
+</html>
