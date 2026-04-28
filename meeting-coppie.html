@@ -36,7 +36,13 @@ const DEFAULT_SECTIONS = [
   { id: "sab-sera", label: "Sabato sera", icon: "🌆", order: 4 },
   { id: "dom-mat", label: "Domenica mattina", icon: "🙏", order: 5 },
 ];
-const DEFAULT_STATE = { activeShareId: null, shares: [], sections: DEFAULT_SECTIONS };
+const DEFAULT_STATE = {
+  activeShareId: null,
+  selectedShareIds: [],
+  displayMode: "one",
+  shares: [],
+  sections: DEFAULT_SECTIONS
+};
 
 async function saveState(state) {
   await setDoc(doc(firestore, "state", "main"), state);
@@ -55,11 +61,11 @@ async function initState() {
 const LANG_NAMES = { it: "Italiano", en: "English", fr: "Français", es: "Español", pt: "Português" };
 const LANG_FLAGS = { it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", es: "🇪🇸", pt: "🇵🇹" };
 const UI_LABELS = {
-  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", by: "Condivisione guidata dall'amministratore" },
-  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", by: "Sharing guided by the administrator" },
-  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", by: "Partage guidé par l'administrateur" },
-  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", by: "Compartición guiada por el administrador" },
-  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", by: "Partilha guiada pelo administrador" },
+  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
+  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
+  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
+  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
+  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
 };
 const ADMIN_PIN = "1299";
 
@@ -85,6 +91,7 @@ async function translateWithAI(itTitle, itBody) {
 let appState = { ...DEFAULT_STATE };
 let currentView = window.location.hash === "#couple" ? "couple" : "admin";
 let coupleLang = null;
+let couplePageIndex = 0;
 let adminAuth = false;
 let adminTab = "list";
 let adminForm = null;
@@ -95,6 +102,7 @@ let newSecIcon = "✨";
 
 window.addEventListener("hashchange", () => {
   currentView = window.location.hash === "#couple" ? "couple" : "admin";
+  couplePageIndex = 0;
   render();
 });
 
@@ -113,18 +121,43 @@ function e(tag, attrs, ...children) {
   return el;
 }
 
+function getActiveShares() {
+  const mode = appState.displayMode || "one";
+  const all = appState.shares || [];
+  if (mode === "one") {
+    const s = all.find(s => s.id === appState.activeShareId);
+    return s ? [s] : [];
+  } else if (mode === "selected") {
+    const ids = appState.selectedShareIds || [];
+    return all.filter(s => ids.includes(s.id));
+  } else {
+    return all;
+  }
+}
+
+function renderShareCard(share, lang, section, ui) {
+  const content = share.translations?.[lang]?.title ? share.translations[lang] : share.translations?.it;
+  const parts = [
+    section ? e("div", { style:{display:"inline-block", padding:"4px 14px", borderRadius:"20px", background:"rgba(200,169,110,0.12)", border:"1px solid rgba(200,169,110,0.25)", color:"#c8a96e", fontSize:"13px", marginBottom:"16px"} }, section.icon + " " + section.label) : null,
+    e("h2", { style:{fontSize:"23px", fontWeight:"600", color:"#e8dcc8", marginBottom:"14px", lineHeight:"1.35"} }, content?.title || "—"),
+    e("p", { style:{fontSize:"16px", lineHeight:"1.8", color:"#c8b89a", marginBottom:"16px", whiteSpace:"pre-wrap"} }, content?.body || ""),
+  ];
+  if (share.imageUrl) parts.push(e("img", { src:share.imageUrl, style:{width:"100%", borderRadius:"14px", marginBottom:"16px", maxHeight:"300px", objectFit:"cover"} }));
+  parts.push(e("div", { style:{fontSize:"11px", color:"#706050", textAlign:"center", letterSpacing:"1px", marginTop:"16px"} }, ui.by));
+  return e("div", {}, ...parts.filter(Boolean));
+}
+
 function renderCouple() {
-  const active = appState.shares?.find(s => s.id === appState.activeShareId);
-  const section = active ? appState.sections?.find(s => s.id === active.sectionId) : null;
-  const content = active && coupleLang ? (active.translations?.[coupleLang]?.title ? active.translations[coupleLang] : active.translations?.it) : null;
   const ui = UI_LABELS[coupleLang || "it"];
+  const activeShares = getActiveShares();
+  const sections = appState.sections || [];
 
   if (!coupleLang) {
     const grid = e("div", { style: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" } },
       ...Object.entries(LANG_NAMES).map(([code, name]) =>
         e("button", {
           style: { display:"flex", flexDirection:"column", alignItems:"center", gap:"6px", padding:"16px 12px", borderRadius:"14px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(200,169,110,0.06)", cursor:"pointer", color:"#e8dcc8" },
-          onClick: () => { coupleLang = code; render(); }
+          onClick: () => { coupleLang = code; couplePageIndex = 0; render(); }
         }, e("span", { style:{fontSize:"30px"} }, LANG_FLAGS[code]), e("span", { style:{fontSize:"14px"} }, name))
       )
     );
@@ -139,24 +172,35 @@ function renderCouple() {
 
   const backBtn = e("button", {
     style:{display:"inline-flex", alignItems:"center", gap:"6px", background:"transparent", border:"1px solid rgba(200,169,110,0.3)", color:"#c8a96e", borderRadius:"20px", padding:"4px 14px", cursor:"pointer", fontSize:"13px", marginBottom:"24px"},
-    onClick: () => { coupleLang = null; render(); }
+    onClick: () => { coupleLang = null; couplePageIndex = 0; render(); }
   }, LANG_FLAGS[coupleLang] + " " + LANG_NAMES[coupleLang] + " ✕");
 
   let body;
-  if (!active) {
+  if (activeShares.length === 0) {
     body = e("div", { style:{textAlign:"center", padding:"40px 0"} },
       e("div", { style:{fontSize:"48px", marginBottom:"16px"} }, "⏳"),
       e("p", { style:{color:"#a09080", fontSize:"17px", lineHeight:"1.6"} }, ui.waiting)
     );
+  } else if (activeShares.length === 1) {
+    const share = activeShares[0];
+    const section = sections.find(s => s.id === share.sectionId);
+    body = renderShareCard(share, coupleLang, section, ui);
   } else {
-    const parts = [
-      section ? e("div", { style:{display:"inline-block", padding:"4px 14px", borderRadius:"20px", background:"rgba(200,169,110,0.12)", border:"1px solid rgba(200,169,110,0.25)", color:"#c8a96e", fontSize:"13px", marginBottom:"16px"} }, section.icon + " " + section.label) : null,
-      e("h2", { style:{fontSize:"23px", fontWeight:"600", color:"#e8dcc8", marginBottom:"14px", lineHeight:"1.35"} }, content?.title || "—"),
-      e("p", { style:{fontSize:"16px", lineHeight:"1.8", color:"#c8b89a", marginBottom:"16px", whiteSpace:"pre-wrap"} }, content?.body || ""),
-    ];
-    if (active.imageUrl) parts.push(e("img", { src:active.imageUrl, style:{width:"100%", borderRadius:"14px", marginBottom:"16px", maxHeight:"300px", objectFit:"cover"} }));
-    parts.push(e("div", { style:{fontSize:"11px", color:"#706050", textAlign:"center", letterSpacing:"1px", marginTop:"16px"} }, ui.by));
-    body = e("div", {}, ...parts.filter(Boolean));
+    const idx = Math.max(0, Math.min(couplePageIndex, activeShares.length - 1));
+    const share = activeShares[idx];
+    const section = sections.find(s => s.id === share.sectionId);
+    const nav = e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:"20px", gap:"10px"} },
+      e("button", {
+        style:{padding:"8px 16px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:idx===0?"#504040":"#c8a96e", cursor:idx===0?"default":"pointer", fontSize:"13px"},
+        onClick: () => { if(idx>0){couplePageIndex=idx-1;render();} }
+      }, ui.prev),
+      e("span", { style:{color:"#706050", fontSize:"13px"} }, `${idx+1} ${ui.of} ${activeShares.length}`),
+      e("button", {
+        style:{padding:"8px 16px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:idx===activeShares.length-1?"#504040":"#c8a96e", cursor:idx===activeShares.length-1?"default":"pointer", fontSize:"13px"},
+        onClick: () => { if(idx<activeShares.length-1){couplePageIndex=idx+1;render();} }
+      }, ui.next)
+    );
+    body = e("div", {}, renderShareCard(share, coupleLang, section, ui), nav);
   }
 
   return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
@@ -186,9 +230,8 @@ function renderAdmin() {
   }
 
   const sections = [...(appState.sections || [])].sort((a,b) => a.order - b.order);
-  const activeShare = appState.shares?.find(s => s.id === appState.activeShareId);
-  const activeSection = activeShare ? sections.find(s => s.id === activeShare.sectionId) : null;
   const coupleUrl = window.location.href.replace(/#.*/,"") + "#couple";
+  const mode = appState.displayMode || "one";
 
   const tabBtn = (t, label) => e("button", {
     style:{padding:"6px 14px", borderRadius:"20px", border:`1px solid ${adminTab===t?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:adminTab===t?"rgba(200,169,110,0.15)":"transparent", color:adminTab===t?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px"},
@@ -206,11 +249,40 @@ function renderAdmin() {
   let bodyContent;
 
   if (adminTab === "list") {
+    const modeBar = e("div", { style:{padding:"14px 16px", borderRadius:"12px", background:"rgba(200,169,110,0.06)", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"20px"} },
+      e("div", { style:{fontSize:"13px", color:"#c8a96e", fontWeight:"600", marginBottom:"10px", letterSpacing:"1px"} }, "📺 MODALITÀ VISUALIZZAZIONE COPPIE"),
+      e("div", { style:{display:"flex", gap:"8px", flexWrap:"wrap"} },
+        ...[
+          ["one",      "🔴 Una sola",   "Le coppie vedono solo la condivisione attivata"],
+          ["selected", "📋 Selezione",  "Le coppie vedono le condivisioni che selezioni"],
+          ["all",      "📖 Tutte",      "Le coppie vedono tutte le condivisioni"]
+        ].map(([m, label, desc]) =>
+          e("button", {
+            style:{padding:"8px 16px", borderRadius:"10px", border:`2px solid ${mode===m?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:mode===m?"rgba(200,169,110,0.15)":"transparent", color:mode===m?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px", textAlign:"left"},
+            onClick: async () => { await saveState({...appState, displayMode:m}); }
+          },
+            e("div", { style:{fontWeight:"600"} }, label),
+            e("div", { style:{fontSize:"11px", opacity:"0.7", marginTop:"2px"} }, desc)
+          )
+        )
+      )
+    );
+
+    const activeShares = getActiveShares();
+    let statusText = "";
+    if (mode === "one") {
+      const active = appState.shares?.find(s => s.id === appState.activeShareId);
+      statusText = active ? `Attiva: "${active?.translations?.it?.title||""}"` : "Nessuna condivisione attiva — le coppie vedono la schermata di attesa";
+    } else if (mode === "selected") {
+      const n = (appState.selectedShareIds||[]).length;
+      statusText = n > 0 ? `${n} condivisioni selezionate — le coppie possono scorrere tra loro` : "Nessuna condivisione selezionata — le coppie vedono la schermata di attesa";
+    } else {
+      statusText = `Modalità TUTTE — le coppie vedono tutte le ${appState.shares?.length||0} condivisioni e possono scorrere`;
+    }
+
     const statusBar = e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 16px", borderRadius:"10px", background:"rgba(200,169,110,0.06)", marginBottom:"20px", fontSize:"14px", color:"#a09080"} },
-      e("span", { style:{width:"10px", height:"10px", borderRadius:"50%", flexShrink:"0", background:appState.activeShareId?"#4caf50":"#555", boxShadow:appState.activeShareId?"0 0 6px #4caf50":"none", display:"inline-block"} }),
-      appState.activeShareId
-        ? `Attiva: ${activeSection?.icon||""} ${activeSection?.label||""} — "${activeShare?.translations?.it?.title||""}"`
-        : "Nessuna condivisione attiva — le coppie vedono la schermata di attesa"
+      e("span", { style:{width:"10px", height:"10px", borderRadius:"50%", flexShrink:"0", background:activeShares.length>0?"#4caf50":"#555", boxShadow:activeShares.length>0?"0 0 6px #4caf50":"none", display:"inline-block"} }),
+      statusText
     );
 
     const filters = e("div", { style:{display:"flex", gap:"8px", marginBottom:"18px", flexWrap:"wrap"} },
@@ -226,18 +298,33 @@ function renderAdmin() {
       .map(sec => {
         const shares = (appState.shares||[]).filter(s=>s.sectionId===sec.id);
         const secHeader = e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:"15px", color:"#c8a96e", fontWeight:"600", marginBottom:"8px", paddingBottom:"6px", borderBottom:"1px solid rgba(200,169,110,0.15)"} },
-          e("span", {}, sec.icon+" "+sec.label+" "),
+          e("span", {}, sec.icon+" "+sec.label),
           e("span", { style:{fontSize:"12px", color:"#706050", fontWeight:"400"} }, `(${shares.length})`),
-          e("button", {
-            style:{padding:"3px 12px", borderRadius:"16px", border:"1px solid rgba(200,169,110,0.4)", background:"rgba(200,169,110,0.1)", color:"#c8a96e", cursor:"pointer", fontSize:"13px", fontWeight:"600"},
-            onClick:()=>openNewForm(sec.id)
-          }, "➕ Aggiungi")
+          e("button", { style:{padding:"3px 12px", borderRadius:"16px", border:"1px solid rgba(200,169,110,0.4)", background:"rgba(200,169,110,0.1)", color:"#c8a96e", cursor:"pointer", fontSize:"13px", fontWeight:"600"}, onClick:()=>openNewForm(sec.id) }, "➕ Aggiungi")
         );
         const shareRows = shares.length===0
           ? [e("div", { style:{color:"#504040", fontSize:"13px", padding:"6px 0"} }, "Nessuna condivisione in questa sezione")]
           : shares.map(share => {
-            const isActive = share.id === appState.activeShareId;
-            return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isActive?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isActive?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
+            const isActiveOne = share.id === appState.activeShareId;
+            const isSelected = (appState.selectedShareIds||[]).includes(share.id);
+            const isHighlighted = mode==="one" ? isActiveOne : mode==="selected" ? isSelected : true;
+
+            let actionBtn;
+            if (mode === "one") {
+              actionBtn = e("button", {
+                style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isActiveOne?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isActiveOne?"rgba(76,175,80,0.2)":"transparent", color:isActiveOne?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:()=>activateShare(share.id)
+              }, isActiveOne?"● ATTIVA":"Attiva");
+            } else if (mode === "selected") {
+              actionBtn = e("button", {
+                style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isSelected?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isSelected?"rgba(76,175,80,0.2)":"transparent", color:isSelected?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:()=>toggleSelected(share.id)
+              }, isSelected?"✓ Selezionata":"Seleziona");
+            } else {
+              actionBtn = e("span", { style:{fontSize:"12px", color:"#4caf50", padding:"5px 8px"} }, "✓ Visibile");
+            }
+
+            return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isHighlighted?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isHighlighted?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
               e("div", { style:{flex:"1"} },
                 e("strong", { style:{color:"#e8dcc8"} }, share.translations?.it?.title||"—"),
                 e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
@@ -247,17 +334,14 @@ function renderAdmin() {
               e("div", { style:{display:"flex", gap:"6px", alignItems:"center"} },
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openEditForm(share) }, "✏️"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
-                e("button", {
-                  style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isActive?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isActive?"rgba(76,175,80,0.2)":"transparent", color:isActive?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
-                  onClick:()=>activateShare(share.id)
-                }, isActive?"● ATTIVA":"Attiva")
+                actionBtn
               )
             );
           });
         return e("div", { style:{marginBottom:"28px"} }, secHeader, ...shareRows);
       });
 
-    bodyContent = e("div", {}, statusBar, filters, ...grouped);
+    bodyContent = e("div", {}, modeBar, statusBar, filters, ...grouped);
   }
 
   else if (adminTab === "add" && adminForm) {
@@ -273,7 +357,6 @@ function renderAdmin() {
       el.addEventListener("input", ev => onChange(ev.target.value));
       return el;
     };
-
     const sel = e("select", { style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"#1a1a2e", color:"#e8dcc8", fontSize:"15px"} },
       ...sections.map(sec => {
         const opt = e("option", { value:sec.id }, sec.icon+" "+sec.label);
@@ -358,7 +441,7 @@ function renderAdmin() {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(coupleUrl)}&bgcolor=0d0d1a&color=c8a96e&margin=12`;
     bodyContent = e("div", { style:{textAlign:"center", padding:"20px 0"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"12px"} }, "📲 QR Code per le coppie"),
-      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare. Scelgono la lingua e vedono solo la condivisione che tu attivi."),
+      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare. Scelgono la lingua e vedono le condivisioni attivate."),
       e("div", { style:{display:"flex", justifyContent:"center", marginBottom:"16px"} },
         e("img", { src:qrUrl, style:{width:"200px", height:"200px", borderRadius:"14px", border:"2px solid rgba(200,169,110,0.35)"} })
       ),
@@ -376,12 +459,20 @@ function renderAdmin() {
 }
 
 async function activateShare(id) {
-  const newState = { ...appState, activeShareId: appState.activeShareId===id ? null : id };
-  await saveState(newState);
+  await saveState({ ...appState, activeShareId: appState.activeShareId===id ? null : id });
+}
+async function toggleSelected(id) {
+  const current = appState.selectedShareIds || [];
+  const newIds = current.includes(id) ? current.filter(x=>x!==id) : [...current, id];
+  await saveState({ ...appState, selectedShareIds: newIds });
 }
 async function deleteShare(id) {
-  const newState = { ...appState, shares:(appState.shares||[]).filter(s=>s.id!==id), activeShareId:appState.activeShareId===id?null:appState.activeShareId };
-  await saveState(newState);
+  await saveState({
+    ...appState,
+    shares:(appState.shares||[]).filter(s=>s.id!==id),
+    activeShareId:appState.activeShareId===id?null:appState.activeShareId,
+    selectedShareIds:(appState.selectedShareIds||[]).filter(x=>x!==id)
+  });
 }
 function openNewForm(sectionId) {
   adminForm = {
@@ -427,7 +518,6 @@ async function deleteSection(id) {
 function render() {
   const app = document.getElementById("app");
   app.innerHTML = "";
-
   const demoBar = e("div", { style:{display:"flex", alignItems:"center", gap:"8px", padding:"8px 16px", background:"rgba(200,169,110,0.06)", borderBottom:"1px solid rgba(200,169,110,0.12)", fontSize:"13px"} },
     e("span", { style:{color:"#c8a96e", marginRight:"4px"} }, "Vista:"),
     e("button", {
@@ -439,7 +529,6 @@ function render() {
       onClick:()=>{window.location.hash="couple";currentView="couple";render();}
     }, "💞 Vista Coppie")
   );
-
   app.appendChild(demoBar);
   app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
 }
