@@ -61,11 +61,11 @@ async function initState() {
 const LANG_NAMES = { it: "Italiano", en: "English", fr: "Français", es: "Español", pt: "Português" };
 const LANG_FLAGS = { it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", es: "🇪🇸", pt: "🇵🇹" };
 const UI_LABELS = {
-  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
-  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
-  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
-  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
-  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
+  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", welcome: "Oggi può nascere qualcosa di nuovo tra voi", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
+  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", welcome: "Today something new can be born between you", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
+  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", welcome: "Aujourd'hui quelque chose de nouveau peut naître entre vous", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
+  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Hoy puede nacer algo nuevo entre vosotros", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
+  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Hoje pode nascer algo novo entre vós", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
 };
 const ADMIN_PIN = "1299";
 
@@ -163,6 +163,7 @@ function renderCouple() {
     );
     return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
       e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
+        e("img", { src:"https://i.ibb.co/C368QQ9D/image.png", style:{width:"100%", borderRadius:"12px", marginBottom:"20px", objectFit:"cover"} }),
         e("div", { style:{textAlign:"center", fontSize:"52px", marginBottom:"6px"} }, "💞"),
         e("h2", { style:{textAlign:"center", fontSize:"20px", color:"#c8a96e", fontWeight:"400", marginBottom:"28px", letterSpacing:"1px"} }, UI_LABELS.it.choose),
         grid
@@ -177,9 +178,11 @@ function renderCouple() {
 
   let body;
   if (activeShares.length === 0) {
-    body = e("div", { style:{textAlign:"center", padding:"40px 0"} },
-      e("div", { style:{fontSize:"48px", marginBottom:"16px"} }, "⏳"),
-      e("p", { style:{color:"#a09080", fontSize:"17px", lineHeight:"1.6"} }, ui.waiting)
+    body = e("div", { style:{textAlign:"center", padding:"20px 0"} },
+      e("img", { src:"https://i.ibb.co/C368QQ9D/image.png", style:{width:"100%", borderRadius:"12px", marginBottom:"24px", objectFit:"cover"} }),
+      e("div", { style:{fontSize:"42px", marginBottom:"12px"} }, "💞"),
+      e("p", { style:{color:"#c8a96e", fontSize:"19px", lineHeight:"1.7", fontStyle:"italic", marginBottom:"16px"} }, ui.welcome),
+      e("p", { style:{color:"#a09080", fontSize:"13px", lineHeight:"1.6"} }, ui.waiting)
     );
   } else if (activeShares.length === 1) {
     const share = activeShares[0];
