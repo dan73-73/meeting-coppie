@@ -13,7 +13,6 @@ textarea, input, select { font-family: Georgia, serif; }
 </head>
 <body>
 <div id="app"></div>
-
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -40,9 +39,12 @@ const DEFAULT_STATE = {
   activeShareId: null,
   selectedShareIds: [],
   displayMode: "one",
-  shares: [],
+  shares: [],        // shares in the weekend schedule
+  library: [],       // archive/library of all prepared shares
   sections: DEFAULT_SECTIONS
 };
+
+const LOGO_URL = "https://i.ibb.co/C368QQ9D/image.png";
 
 async function saveState(state) {
   await setDoc(doc(firestore, "state", "main"), state);
@@ -67,7 +69,7 @@ const UI_LABELS = {
   es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Hoy puede nacer algo nuevo entre vosotros", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
   pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Hoje pode nascer algo novo entre vós", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
 };
-const ADMIN_PIN = "120399";
+const ADMIN_PIN = "1299";
 
 async function translateWithAI(itTitle, itBody) {
   try {
@@ -96,9 +98,13 @@ let adminAuth = false;
 let adminTab = "list";
 let adminForm = null;
 let adminEditId = null;
+let adminFormTarget = "shares"; // "shares" or "library"
 let filterSection = "all";
 let newSecLabel = "";
 let newSecIcon = "✨";
+let libForm = null;
+let libEditId = null;
+let libFilterCommunity = "all";
 
 window.addEventListener("hashchange", () => {
   currentView = window.location.hash === "#couple" ? "couple" : "admin";
@@ -121,6 +127,7 @@ function e(tag, attrs, ...children) {
   return el;
 }
 
+// ═══ HELPERS ═══
 function getActiveShares() {
   const mode = appState.displayMode || "one";
   const all = appState.shares || [];
@@ -147,6 +154,7 @@ function renderShareCard(share, lang, section, ui) {
   return e("div", {}, ...parts.filter(Boolean));
 }
 
+// ═══ COUPLE VIEW ═══
 function renderCouple() {
   const ui = UI_LABELS[coupleLang || "it"];
   const activeShares = getActiveShares();
@@ -163,7 +171,7 @@ function renderCouple() {
     );
     return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
       e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
-        e("img", { src:"https://i.ibb.co/C368QQ9D/image.png", style:{width:"100%", borderRadius:"12px", marginBottom:"20px", objectFit:"cover"} }),
+        e("img", { src:LOGO_URL, style:{width:"100%", borderRadius:"12px", marginBottom:"20px", objectFit:"cover"} }),
         e("div", { style:{textAlign:"center", fontSize:"52px", marginBottom:"6px"} }, "💞"),
         e("h2", { style:{textAlign:"center", fontSize:"20px", color:"#c8a96e", fontWeight:"400", marginBottom:"28px", letterSpacing:"1px"} }, UI_LABELS.it.choose),
         grid
@@ -179,7 +187,7 @@ function renderCouple() {
   let body;
   if (activeShares.length === 0) {
     body = e("div", { style:{textAlign:"center", padding:"20px 0"} },
-      e("img", { src:"https://i.ibb.co/C368QQ9D/image.png", style:{width:"100%", borderRadius:"12px", marginBottom:"24px", objectFit:"cover"} }),
+      e("img", { src:LOGO_URL, style:{width:"100%", borderRadius:"12px", marginBottom:"24px", objectFit:"cover"} }),
       e("div", { style:{fontSize:"42px", marginBottom:"12px"} }, "💞"),
       e("p", { style:{color:"#c8a96e", fontSize:"19px", lineHeight:"1.7", fontStyle:"italic", marginBottom:"16px"} }, ui.welcome),
       e("p", { style:{color:"#a09080", fontSize:"13px", lineHeight:"1.6"} }, ui.waiting)
@@ -213,6 +221,116 @@ function renderCouple() {
   );
 }
 
+// ═══ SHARE FORM ═══
+function renderShareForm(sections, isLibrary) {
+  const inp = (placeholder, val, onChange) => {
+    const el = e("input", { placeholder, style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    el.value = val||"";
+    el.addEventListener("input", ev => onChange(ev.target.value));
+    return el;
+  };
+  const ta = (placeholder, val, onChange) => {
+    const el = e("textarea", { placeholder, rows:"3", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"14px", resize:"vertical", lineHeight:"1.6"} });
+    el.value = val||"";
+    el.addEventListener("input", ev => onChange(ev.target.value));
+    return el;
+  };
+
+  const form = isLibrary ? libForm : adminForm;
+  const editId = isLibrary ? libEditId : adminEditId;
+
+  const sectionSel = !isLibrary ? (() => {
+    const sel = e("select", { style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"#1a1a2e", color:"#e8dcc8", fontSize:"15px"} },
+      ...sections.map(sec => {
+        const opt = e("option", { value:sec.id }, sec.icon+" "+sec.label);
+        if (form.sectionId===sec.id) opt.selected=true;
+        return opt;
+      })
+    );
+    sel.addEventListener("change", ev => { form.sectionId=ev.target.value; });
+    return sel;
+  })() : null;
+
+  const translateBtn = e("button", {
+    style:{marginTop:"16px", width:"100%", padding:"11px", borderRadius:"10px", border:"1px solid rgba(100,180,255,0.35)", background:"rgba(100,180,255,0.07)", color:"#90c8ff", cursor:"pointer", fontSize:"14px", fontWeight:"600"},
+    onClick: async () => {
+      if (!form.translations.it.title && !form.translations.it.body) { alert("Inserisci prima il testo italiano!"); return; }
+      translateBtn.textContent = "⏳ Traduzione in corso…";
+      translateBtn.disabled = true;
+      const translated = await translateWithAI(form.translations.it.title, form.translations.it.body);
+      Object.assign(form.translations, translated);
+      render();
+    }
+  }, "🤖 Traduci automaticamente nelle altre 4 lingue");
+
+  const langBlocks = ["en","fr","es","pt"].map(code =>
+    e("div", { style:{marginTop:"16px", paddingTop:"16px", borderTop:"1px solid rgba(200,169,110,0.1)"} },
+      e("div", { style:{fontSize:"14px", color:"#a09080", marginBottom:"8px"} }, LANG_FLAGS[code]+" "+LANG_NAMES[code]),
+      inp("Titolo", form.translations[code]?.title, v=>{ form.translations[code].title=v; }),
+      e("div", { style:{marginTop:"8px"} }, ta("Testo…", form.translations[code]?.body, v=>{ form.translations[code].body=v; }))
+    )
+  );
+
+  const saveAction = isLibrary ? saveLibForm : saveForm;
+  const cancelAction = isLibrary
+    ? () => { libForm=null; libEditId=null; adminTab="library"; render(); }
+    : () => { adminTab="list"; adminForm=null; adminEditId=null; render(); };
+
+  return e("div", { style:{maxWidth:"620px"} },
+    e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px"} },
+      editId ? "✏️ Modifica condivisione" : (isLibrary ? "📦 Nuova condivisione in Libreria" : "➕ Nuova condivisione")
+    ),
+    isLibrary ? e("div", { style:{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"16px"} },
+      (() => {
+        const el = inp("Nome coppia (es. Ugo e Anna)", form.coupleName, v=>{ form.coupleName=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "👫 Nome coppia"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Comunità/Paese (es. Italia)", form.community, v=>{ form.community=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "🌍 Comunità"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Giorno (es. Sabato 28 nov)", form.day, v=>{ form.day=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "📅 Giorno"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Orario (es. 21:30)", form.time, v=>{ form.time=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "🕐 Orario"),
+          el
+        );
+      })()
+    ) : null,
+    !isLibrary ? e("div", {},
+      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px"} }, "Sezione del weekend"),
+      sectionSel
+    ) : null,
+    e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px", marginTop:"16px"} }, "URL immagine (opzionale)"),
+    inp("https://…", form.imageUrl, v=>{ form.imageUrl=v; }),
+    e("div", { style:{marginTop:"20px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.35)", background:"rgba(200,169,110,0.05)"} },
+      e("div", { style:{fontSize:"15px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "🇮🇹 Italiano — testo di partenza"),
+      inp("Titolo", form.translations.it.title, v=>{ form.translations.it.title=v; }),
+      e("div", { style:{marginTop:"10px"} }, ta("Testo della condivisione…", form.translations.it.body, v=>{ form.translations.it.body=v; }))
+    ),
+    translateBtn,
+    ...langBlocks,
+    e("div", { style:{display:"flex", gap:"12px", marginTop:"24px"} },
+      e("button", { style:{padding:"10px 28px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"15px"}, onClick:saveAction }, "💾 Salva"),
+      e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer", fontSize:"15px"}, onClick:cancelAction }, "Annulla")
+    )
+  );
+}
+
+// ═══ ADMIN VIEW ═══
 function renderAdmin() {
   if (!adminAuth) {
     const pinInput = e("input", { type:"password", placeholder:"PIN admin", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"18px", textAlign:"center", letterSpacing:"6px"} });
@@ -238,26 +356,30 @@ function renderAdmin() {
 
   const tabBtn = (t, label) => e("button", {
     style:{padding:"6px 14px", borderRadius:"20px", border:`1px solid ${adminTab===t?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:adminTab===t?"rgba(200,169,110,0.15)":"transparent", color:adminTab===t?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px"},
-    onClick: () => { if(t==="add") openNewForm(null); else { adminTab=t; render(); } }
+    onClick: () => {
+      if(t==="add"){ adminFormTarget="shares"; openNewForm(null); }
+      else { adminTab=t; adminForm=null; libForm=null; render(); }
+    }
   }, label);
 
   const header = e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 20px", background:"rgba(200,169,110,0.05)", borderBottom:"1px solid rgba(200,169,110,0.12)", flexWrap:"wrap"} },
     e("span", { style:{fontSize:"17px", color:"#c8a96e", fontWeight:"600", whiteSpace:"nowrap"} }, "💞 Meeting Admin"),
     e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
-      tabBtn("list","📋 Condivisioni"), tabBtn("add","➕ Nuova"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
+      tabBtn("list","📋 Programma"), tabBtn("add","➕ Nuova"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
     ),
     e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:()=>{adminAuth=false;render();} }, "Esci")
   );
 
   let bodyContent;
 
+  // ── TAB: PROGRAMMA ──
   if (adminTab === "list") {
     const modeBar = e("div", { style:{padding:"14px 16px", borderRadius:"12px", background:"rgba(200,169,110,0.06)", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"20px"} },
       e("div", { style:{fontSize:"13px", color:"#c8a96e", fontWeight:"600", marginBottom:"10px", letterSpacing:"1px"} }, "📺 MODALITÀ VISUALIZZAZIONE COPPIE"),
       e("div", { style:{display:"flex", gap:"8px", flexWrap:"wrap"} },
         ...[
           ["one",      "🔴 Una sola",   "Le coppie vedono solo la condivisione attivata"],
-          ["selected", "📋 Selezione",  "Le coppie vedono le condivisioni che selezioni"],
+          ["selected", "📋 Selezione",  "Le coppie scorrono tra quelle selezionate"],
           ["all",      "📖 Tutte",      "Le coppie vedono tutte le condivisioni"]
         ].map(([m, label, desc]) =>
           e("button", {
@@ -278,9 +400,9 @@ function renderAdmin() {
       statusText = active ? `Attiva: "${active?.translations?.it?.title||""}"` : "Nessuna condivisione attiva — le coppie vedono la schermata di attesa";
     } else if (mode === "selected") {
       const n = (appState.selectedShareIds||[]).length;
-      statusText = n > 0 ? `${n} condivisioni selezionate — le coppie possono scorrere tra loro` : "Nessuna condivisione selezionata — le coppie vedono la schermata di attesa";
+      statusText = n > 0 ? `${n} condivisioni selezionate` : "Nessuna selezionata — le coppie vedono la schermata di attesa";
     } else {
-      statusText = `Modalità TUTTE — le coppie vedono tutte le ${appState.shares?.length||0} condivisioni e possono scorrere`;
+      statusText = `Tutte visibili (${appState.shares?.length||0}) — le coppie possono scorrere`;
     }
 
     const statusBar = e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 16px", borderRadius:"10px", background:"rgba(200,169,110,0.06)", marginBottom:"20px", fontSize:"14px", color:"#a09080"} },
@@ -305,9 +427,10 @@ function renderAdmin() {
           e("span", { style:{fontSize:"12px", color:"#706050", fontWeight:"400"} }, `(${shares.length})`),
           e("button", { style:{padding:"3px 12px", borderRadius:"16px", border:"1px solid rgba(200,169,110,0.4)", background:"rgba(200,169,110,0.1)", color:"#c8a96e", cursor:"pointer", fontSize:"13px", fontWeight:"600"}, onClick:()=>openNewForm(sec.id) }, "➕ Aggiungi")
         );
+
         const shareRows = shares.length===0
           ? [e("div", { style:{color:"#504040", fontSize:"13px", padding:"6px 0"} }, "Nessuna condivisione in questa sezione")]
-          : shares.map(share => {
+          : shares.map((share, idx) => {
             const isActiveOne = share.id === appState.activeShareId;
             const isSelected = (appState.selectedShareIds||[]).includes(share.id);
             const isHighlighted = mode==="one" ? isActiveOne : mode==="selected" ? isSelected : true;
@@ -327,11 +450,21 @@ function renderAdmin() {
               actionBtn = e("span", { style:{fontSize:"12px", color:"#4caf50", padding:"5px 8px"} }, "✓ Visibile");
             }
 
-            return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isHighlighted?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isHighlighted?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
+            // Order buttons
+            const orderBtns = e("div", { style:{display:"flex", flexDirection:"column", gap:"2px"} },
+              e("button", { style:{background:"transparent", border:"none", cursor:idx===0?"default":"pointer", fontSize:"14px", color:idx===0?"#504040":"#a09080", lineHeight:"1"}, onClick:()=>moveShare(sec.id, idx, -1) }, "▲"),
+              e("button", { style:{background:"transparent", border:"none", cursor:idx===shares.length-1?"default":"pointer", fontSize:"14px", color:idx===shares.length-1?"#504040":"#a09080", lineHeight:"1"}, onClick:()=>moveShare(sec.id, idx, 1) }, "▼")
+            );
+
+            return e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isHighlighted?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isHighlighted?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
+              orderBtns,
               e("div", { style:{flex:"1"} },
                 e("strong", { style:{color:"#e8dcc8"} }, share.translations?.it?.title||"—"),
                 e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
-                  Object.keys(LANG_FLAGS).filter(l=>share.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ") + (share.imageUrl?" 🖼️":"")
+                  (share.coupleName ? "👫 "+share.coupleName+" · " : "") +
+                  (share.day ? "📅 "+share.day+" " : "") +
+                  (share.time ? "🕐 "+share.time+" " : "") +
+                  Object.keys(LANG_FLAGS).filter(l=>share.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ")
                 )
               ),
               e("div", { style:{display:"flex", gap:"6px", alignItems:"center"} },
@@ -347,68 +480,71 @@ function renderAdmin() {
     bodyContent = e("div", {}, modeBar, statusBar, filters, ...grouped);
   }
 
+  // ── TAB: NUOVA (form) ──
   else if (adminTab === "add" && adminForm) {
-    const inp = (placeholder, val, onChange) => {
-      const el = e("input", { placeholder, style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
-      el.value = val||"";
-      el.addEventListener("input", ev => onChange(ev.target.value));
-      return el;
-    };
-    const ta = (placeholder, val, onChange) => {
-      const el = e("textarea", { placeholder, rows:"3", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"14px", resize:"vertical", lineHeight:"1.6"} });
-      el.value = val||"";
-      el.addEventListener("input", ev => onChange(ev.target.value));
-      return el;
-    };
-    const sel = e("select", { style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"#1a1a2e", color:"#e8dcc8", fontSize:"15px"} },
-      ...sections.map(sec => {
-        const opt = e("option", { value:sec.id }, sec.icon+" "+sec.label);
-        if (adminForm.sectionId===sec.id) opt.selected=true;
-        return opt;
-      })
-    );
-    sel.addEventListener("change", ev => { adminForm.sectionId=ev.target.value; });
-
-    const translateBtn = e("button", {
-      style:{marginTop:"16px", width:"100%", padding:"11px", borderRadius:"10px", border:"1px solid rgba(100,180,255,0.35)", background:"rgba(100,180,255,0.07)", color:"#90c8ff", cursor:"pointer", fontSize:"14px", fontWeight:"600"},
-      onClick: async () => {
-        if (!adminForm.translations.it.title && !adminForm.translations.it.body) { alert("Inserisci prima il testo italiano!"); return; }
-        translateBtn.textContent = "⏳ Traduzione in corso…";
-        translateBtn.disabled = true;
-        const translated = await translateWithAI(adminForm.translations.it.title, adminForm.translations.it.body);
-        Object.assign(adminForm.translations, translated);
-        render();
-      }
-    }, "🤖 Traduci automaticamente nelle altre 4 lingue");
-
-    const langBlocks = ["en","fr","es","pt"].map(code =>
-      e("div", { style:{marginTop:"16px", paddingTop:"16px", borderTop:"1px solid rgba(200,169,110,0.1)"} },
-        e("div", { style:{fontSize:"14px", color:"#a09080", marginBottom:"8px"} }, LANG_FLAGS[code]+" "+LANG_NAMES[code]),
-        inp("Titolo", adminForm.translations[code]?.title, v=>{ adminForm.translations[code].title=v; }),
-        e("div", { style:{marginTop:"8px"} }, ta("Testo…", adminForm.translations[code]?.body, v=>{ adminForm.translations[code].body=v; }))
-      )
-    );
-
-    bodyContent = e("div", { style:{maxWidth:"620px"} },
-      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px"} }, adminEditId?"✏️ Modifica condivisione":"➕ Nuova condivisione"),
-      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px"} }, "Sezione del weekend"),
-      sel,
-      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px", marginTop:"16px"} }, "URL immagine (opzionale)"),
-      inp("https://…", adminForm.imageUrl, v=>{ adminForm.imageUrl=v; }),
-      e("div", { style:{marginTop:"20px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.35)", background:"rgba(200,169,110,0.05)"} },
-        e("div", { style:{fontSize:"15px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "🇮🇹 Italiano — testo di partenza"),
-        inp("Titolo", adminForm.translations.it.title, v=>{ adminForm.translations.it.title=v; }),
-        e("div", { style:{marginTop:"10px"} }, ta("Testo della condivisione…", adminForm.translations.it.body, v=>{ adminForm.translations.it.body=v; }))
-      ),
-      translateBtn,
-      ...langBlocks,
-      e("div", { style:{display:"flex", gap:"12px", marginTop:"24px"} },
-        e("button", { style:{padding:"10px 28px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"15px"}, onClick:saveForm }, "💾 Salva"),
-        e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer", fontSize:"15px"}, onClick:()=>{adminTab="list";adminForm=null;render();} }, "Annulla")
-      )
-    );
+    bodyContent = renderShareForm(sections, false);
   }
 
+  // ── TAB: LIBRERIA ──
+  else if (adminTab === "library") {
+    if (libForm) {
+      bodyContent = renderShareForm(sections, true);
+    } else {
+      const library = appState.library || [];
+      const communities = ["all", ...new Set(library.map(l=>l.community).filter(Boolean))];
+
+      const comFilters = e("div", { style:{display:"flex", gap:"8px", marginBottom:"18px", flexWrap:"wrap"} },
+        ...communities.map(c => e("button", {
+          style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${libFilterCommunity===c?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:libFilterCommunity===c?"rgba(200,169,110,0.15)":"transparent", color:libFilterCommunity===c?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"},
+          onClick:()=>{libFilterCommunity=c;render();}
+        }, c==="all"?"🌍 Tutte":c))
+      );
+
+      const filtered = library.filter(l => libFilterCommunity==="all" || l.community===libFilterCommunity);
+
+      const libRows = filtered.length === 0
+        ? [e("div", { style:{color:"#504040", fontSize:"14px", padding:"20px 0", textAlign:"center"} }, "Nessuna condivisione in libreria. Aggiungine una con il bottone qui sotto.")]
+        : filtered.map((item, idx) => {
+          const usedInShares = (appState.shares||[]).some(s=>s.libId===item.id);
+          return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+            e("div", { style:{flex:"1"} },
+              e("div", { style:{display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"4px"} },
+                e("strong", { style:{color:"#e8dcc8", fontSize:"15px"} }, item.translations?.it?.title||"—"),
+                item.coupleName ? e("span", { style:{fontSize:"12px", color:"#c8a96e", background:"rgba(200,169,110,0.1)", padding:"2px 8px", borderRadius:"10px"} }, "👫 "+item.coupleName) : null,
+              ),
+              e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
+                (item.community ? "🌍 "+item.community : "") +
+                (item.day ? " · 📅 "+item.day : "") +
+                (item.time ? " · 🕐 "+item.time : "") +
+                " · " + Object.keys(LANG_FLAGS).filter(l=>item.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ")
+              )
+            ),
+            e("div", { style:{display:"flex", gap:"6px", alignItems:"center", flexWrap:"wrap"} },
+              e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openLibEditForm(item) }, "✏️"),
+              e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteLibItem(item.id) }, "🗑️"),
+              e("button", {
+                style:{padding:"5px 12px", borderRadius:"16px", border:"1px solid rgba(100,200,100,0.4)", background:"rgba(100,200,100,0.08)", color:"#90d090", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:()=>useFromLibrary(item)
+              }, "📋 Usa nel programma")
+            )
+          );
+        });
+
+      bodyContent = e("div", { style:{maxWidth:"820px"} },
+        e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"16px", flexWrap:"wrap", gap:"10px"} },
+          e("div", {},
+            e("h3", { style:{fontSize:"20px", color:"#c8a96e"} }, "📦 Libreria condivisioni"),
+            e("p", { style:{fontSize:"13px", color:"#a09080", marginTop:"4px"} }, `${library.length} condivisioni archiviate — invisibili alle coppie`)
+          ),
+          e("button", { style:{padding:"8px 20px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"}, onClick:openNewLibForm }, "➕ Aggiungi alla libreria")
+        ),
+        comFilters,
+        ...libRows
+      );
+    }
+  }
+
+  // ── TAB: SEZIONI ──
   else if (adminTab === "sections") {
     const secRows = sections.map(sec =>
       e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
@@ -421,11 +557,10 @@ function renderAdmin() {
     const iconInput = e("input", { placeholder:"Emoji", style:{width:"70px", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
     iconInput.value = newSecIcon;
     iconInput.addEventListener("input", ev=>{ newSecIcon=ev.target.value; });
-    const labelInput = e("input", { placeholder:"Nome sezione (es. Sabato notte)", style:{flex:"1", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    const labelInput = e("input", { placeholder:"Nome sezione", style:{flex:"1", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
     labelInput.value = newSecLabel;
     labelInput.addEventListener("input", ev=>{ newSecLabel=ev.target.value; });
     labelInput.addEventListener("keydown", ev=>ev.key==="Enter"&&addSection());
-
     bodyContent = e("div", { style:{maxWidth:"560px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "🗂️ Sezioni del weekend"),
       e("p", { style:{color:"#a09080", fontSize:"14px", marginBottom:"20px"} }, "Aggiungi, rinomina o elimina le sezioni."),
@@ -440,17 +575,18 @@ function renderAdmin() {
     );
   }
 
+  // ── TAB: QR ──
   else if (adminTab === "qr") {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(coupleUrl)}&bgcolor=0d0d1a&color=c8a96e&margin=12`;
     bodyContent = e("div", { style:{textAlign:"center", padding:"20px 0"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"12px"} }, "📲 QR Code per le coppie"),
-      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare. Scelgono la lingua e vedono le condivisioni attivate."),
+      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare."),
       e("div", { style:{display:"flex", justifyContent:"center", marginBottom:"16px"} },
         e("img", { src:qrUrl, style:{width:"200px", height:"200px", borderRadius:"14px", border:"2px solid rgba(200,169,110,0.35)"} })
       ),
       e("p", { style:{fontSize:"12px", color:"#706050", wordBreak:"break-all", marginBottom:"20px"} }, coupleUrl),
       e("div", { style:{display:"inline-block", padding:"12px 20px", borderRadius:"12px", background:"rgba(200,169,110,0.08)", border:"1px solid rgba(200,169,110,0.2)", fontSize:"14px", color:"#c8a96e", maxWidth:"460px"} },
-        "💡 Proietta questo schermo oppure stampa il QR e distribuiscilo prima del meeting."
+        "💡 Proietta questo schermo oppure stampa il QR."
       )
     );
   }
@@ -461,6 +597,7 @@ function renderAdmin() {
   );
 }
 
+// ═══ ACTIONS ═══
 async function activateShare(id) {
   await saveState({ ...appState, activeShareId: appState.activeShareId===id ? null : id });
 }
@@ -477,10 +614,22 @@ async function deleteShare(id) {
     selectedShareIds:(appState.selectedShareIds||[]).filter(x=>x!==id)
   });
 }
+async function moveShare(sectionId, idx, dir) {
+  let shares = [...(appState.shares||[])];
+  const secShares = shares.filter(s=>s.sectionId===sectionId);
+  const otherShares = shares.filter(s=>s.sectionId!==sectionId);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= secShares.length) return;
+  [secShares[idx], secShares[newIdx]] = [secShares[newIdx], secShares[idx]];
+  await saveState({ ...appState, shares: [...otherShares, ...secShares] });
+}
 function openNewForm(sectionId) {
   adminForm = {
     sectionId: sectionId || (appState.sections||[])[0]?.id || "ven-sera",
     imageUrl: "",
+    coupleName: "",
+    day: "",
+    time: "",
     translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
   };
   adminEditId = null;
@@ -491,6 +640,9 @@ function openEditForm(share) {
   adminForm = {
     sectionId: share.sectionId || (appState.sections||[])[0]?.id || "",
     imageUrl: share.imageUrl||"",
+    coupleName: share.coupleName||"",
+    day: share.day||"",
+    time: share.time||"",
     translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...share.translations }
   };
   adminEditId = share.id;
@@ -508,6 +660,65 @@ async function saveForm() {
   await saveState({ ...appState, shares });
   adminTab="list"; adminForm=null; adminEditId=null; render();
 }
+
+// Library actions
+function openNewLibForm() {
+  libForm = {
+    coupleName: "",
+    community: "",
+    day: "",
+    time: "",
+    imageUrl: "",
+    translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
+  };
+  libEditId = null;
+  render();
+}
+function openLibEditForm(item) {
+  libForm = {
+    coupleName: item.coupleName||"",
+    community: item.community||"",
+    day: item.day||"",
+    time: item.time||"",
+    imageUrl: item.imageUrl||"",
+    translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...item.translations }
+  };
+  libEditId = item.id;
+  render();
+}
+async function saveLibForm() {
+  if (!libForm) return;
+  let library = [...(appState.library||[])];
+  if (libEditId) {
+    library = library.map(l => l.id===libEditId ? {...l,...libForm,id:libEditId} : l);
+  } else {
+    library.push({ ...libForm, id:"lib"+Date.now() });
+  }
+  await saveState({ ...appState, library });
+  libForm=null; libEditId=null; render();
+}
+async function deleteLibItem(id) {
+  await saveState({ ...appState, library:(appState.library||[]).filter(l=>l.id!==id) });
+}
+async function useFromLibrary(item) {
+  // Open a section picker
+  const sections = [...(appState.sections||[])].sort((a,b)=>a.order-b.order);
+  const sectionId = sections[0]?.id;
+  // Add to shares with a copy from library
+  const newShare = {
+    ...item,
+    id: "s"+Date.now(),
+    libId: item.id,
+    sectionId: sectionId,
+  };
+  let shares = [...(appState.shares||[]), newShare];
+  await saveState({ ...appState, shares });
+  // Go to list tab so user can see it and move to right section
+  adminTab = "list";
+  render();
+  alert(`"${item.translations?.it?.title||item.coupleName||"Condivisione"}" aggiunta a "${sections[0]?.label||"Venerdì sera"}".\nUsa la matita ✏️ per cambiarle sezione se necessario.`);
+}
+
 async function addSection() {
   if (!newSecLabel.trim()) return;
   const newSec = { id:"sec-"+Date.now(), label:newSecLabel.trim(), icon:newSecIcon||"📌", order:(appState.sections?.length||0)+1 };
@@ -518,6 +729,7 @@ async function deleteSection(id) {
   await saveState({ ...appState, sections:(appState.sections||[]).filter(s=>s.id!==id) });
 }
 
+// ═══ RENDER ═══
 function render() {
   const app = document.getElementById("app");
   app.innerHTML = "";
@@ -537,7 +749,7 @@ function render() {
 }
 
 await initState();
-subscribeState(state => { appState = state; render(); });
+subscribeState(state => { appState = {...DEFAULT_STATE, ...state}; render(); });
 </script>
 </body>
 </html>
