@@ -16,6 +16,7 @@ textarea, input, select { font-family: Georgia, serif; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
@@ -27,6 +28,7 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const firestore = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
 
 const DEFAULT_SECTIONS = [
   { id: "ven-sera", label: "Venerdì sera", icon: "🌙", order: 1 },
@@ -69,7 +71,7 @@ const UI_LABELS = {
   es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Hoy puede nacer algo nuevo entre vosotros", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
   pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Hoje pode nascer algo novo entre vós", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
 };
-const ADMIN_PIN = "120399";
+const ADMIN_UID = "S80JhCm2aJUqLpCNgzbX8NTp5v03";
 
 async function translateWithAI(itTitle, itBody) {
   try {
@@ -333,18 +335,32 @@ function renderShareForm(sections, isLibrary) {
 // ═══ ADMIN VIEW ═══
 function renderAdmin() {
   if (!adminAuth) {
-    const pinInput = e("input", { type:"password", placeholder:"PIN admin", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"18px", textAlign:"center", letterSpacing:"6px"} });
-    const errMsg = e("p", { style:{color:"#ff6b6b", fontSize:"13px", marginTop:"6px", display:"none"} }, "PIN errato");
-    const tryLogin = () => {
-      if (pinInput.value === ADMIN_PIN) { adminAuth = true; render(); }
-      else { errMsg.style.display = "block"; }
+    const emailInput = e("input", { type:"email", placeholder:"Email amministratore", autocomplete:"username", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"15px", marginBottom:"10px"} });
+    const passwordInput = e("input", { type:"password", placeholder:"Password", autocomplete:"current-password", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"15px"} });
+    const errMsg = e("p", { style:{color:"#ff6b6b", fontSize:"13px", marginTop:"8px", display:"none"} }, "Email o password non corretti");
+    const tryLogin = async () => {
+      errMsg.style.display = "none";
+      try {
+        const cred = await signInWithEmailAndPassword(auth, emailInput.value.trim(), passwordInput.value);
+        if (cred.user.uid !== ADMIN_UID) {
+          await signOut(auth);
+          errMsg.textContent = "Questo account non è autorizzato come amministratore";
+          errMsg.style.display = "block";
+          return;
+        }
+        adminAuth = true;
+        render();
+      } catch (err) {
+        errMsg.textContent = "Email o password non corretti";
+        errMsg.style.display = "block";
+      }
     };
-    pinInput.addEventListener("keydown", ev => ev.key === "Enter" && tryLogin());
+    passwordInput.addEventListener("keydown", ev => ev.key === "Enter" && tryLogin());
     return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center"} },
-      e("div", { style:{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(200,169,110,0.2)", borderRadius:"20px", padding:"40px 32px", textAlign:"center", width:"300px"} },
+      e("div", { style:{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(200,169,110,0.2)", borderRadius:"20px", padding:"40px 32px", textAlign:"center", width:"330px"} },
         e("div", { style:{fontSize:"42px", marginBottom:"8px"} }, "🔐"),
         e("h2", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px", fontWeight:"400"} }, "Area Amministratore"),
-        pinInput, errMsg,
+        emailInput, passwordInput, errMsg,
         e("button", { style:{marginTop:"16px", width:"100%", padding:"10px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"16px"}, onClick:tryLogin }, "Accedi")
       )
     );
@@ -367,7 +383,7 @@ function renderAdmin() {
     e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
       tabBtn("list","📋 Programma"), tabBtn("add","➕ Nuova"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
     ),
-    e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:()=>{adminAuth=false;render();} }, "Esci")
+    e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:async()=>{await signOut(auth); adminAuth=false; render();} }, "Esci")
   );
 
   let bodyContent;
@@ -747,6 +763,11 @@ function render() {
   app.appendChild(demoBar);
   app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
 }
+
+onAuthStateChanged(auth, user => {
+  adminAuth = !!user && user.uid === ADMIN_UID;
+  render();
+});
 
 await initState();
 subscribeState(state => { appState = {...DEFAULT_STATE, ...state}; render(); });
