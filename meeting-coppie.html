@@ -107,6 +107,8 @@ let newSecIcon = "✨";
 let libForm = null;
 let libEditId = null;
 let libFilterCommunity = "all";
+let importItems = [];
+let importError = "";
 
 window.addEventListener("hashchange", () => {
   currentView = window.location.hash === "#couple" ? "couple" : "admin";
@@ -374,14 +376,14 @@ function renderAdmin() {
     style:{padding:"6px 14px", borderRadius:"20px", border:`1px solid ${adminTab===t?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:adminTab===t?"rgba(200,169,110,0.15)":"transparent", color:adminTab===t?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px"},
     onClick: () => {
       if(t==="add"){ adminFormTarget="shares"; openNewForm(null); }
-      else { adminTab=t; adminForm=null; libForm=null; render(); }
+      else { adminTab=t; adminForm=null; libForm=null; if(t!=="import"){ importItems=[]; importError=""; } render(); }
     }
   }, label);
 
   const header = e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 20px", background:"rgba(200,169,110,0.05)", borderBottom:"1px solid rgba(200,169,110,0.12)", flexWrap:"wrap"} },
     e("span", { style:{fontSize:"17px", color:"#c8a96e", fontWeight:"600", whiteSpace:"nowrap"} }, "💞 Meeting Admin"),
     e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
-      tabBtn("list","📋 Programma"), tabBtn("add","➕ Nuova"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
+      tabBtn("list","📋 Programma"), tabBtn("add","➕ Nuova"), tabBtn("import","📥 Importa"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
     ),
     e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:async()=>{await signOut(auth); adminAuth=false; render();} }, "Esci")
   );
@@ -499,6 +501,78 @@ function renderAdmin() {
   // ── TAB: NUOVA (form) ──
   else if (adminTab === "add" && adminForm) {
     bodyContent = renderShareForm(sections, false);
+  }
+
+  // ── TAB: IMPORTA ──
+  else if (adminTab === "import") {
+    const fileInput = e("input", { type:"file", accept:".json,application/json", style:{display:"block", width:"100%", padding:"12px", borderRadius:"10px", border:"1px dashed rgba(200,169,110,0.4)", background:"rgba(255,255,255,0.03)", color:"#e8dcc8", marginTop:"14px"} });
+    fileInput.addEventListener("change", async ev => {
+      importError = ""; importItems = [];
+      const file = ev.target.files?.[0];
+      if (!file) { render(); return; }
+      try {
+        const parsed = JSON.parse(await file.text());
+        const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.shares) ? parsed.shares : []);
+        if (!source.length) throw new Error("Il file non contiene condivisioni.");
+        const validSections = new Set((appState.sections||[]).map(s=>s.id));
+        const fallbackSection = (appState.sections||[])[0]?.id || "ven-sera";
+        importItems = source.map((item, idx) => ({
+          id:"preview-"+idx,
+          sectionId: validSections.has(item.sectionId) ? item.sectionId : fallbackSection,
+          imageUrl:String(item.imageUrl||""),
+          coupleName:String(item.coupleName||""),
+          day:String(item.day||""),
+          time:String(item.time||""),
+          translations:Object.fromEntries(Object.keys(LANG_NAMES).map(code=>[code,{title:String(item.translations?.[code]?.title||""),body:String(item.translations?.[code]?.body||"")}]))
+        })).filter(item => item.translations.it.title || item.translations.it.body);
+        if (!importItems.length) throw new Error("Non ho trovato testi italiani validi da importare.");
+      } catch(err) { importError = err?.message || "File non valido."; }
+      render();
+    });
+
+    const previewRows = importItems.map((item, idx) => {
+      const sec = (appState.sections||[]).find(s=>s.id===item.sectionId);
+      const langs = Object.keys(LANG_FLAGS).filter(code => item.translations?.[code]?.title || item.translations?.[code]?.body).map(code=>LANG_FLAGS[code]).join(" ");
+      return e("div", { style:{padding:"12px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+        e("div", { style:{display:"flex", justifyContent:"space-between", gap:"10px", flexWrap:"wrap"} },
+          e("strong", { style:{color:"#e8dcc8"} }, (idx+1)+". "+(item.translations.it.title || "Senza titolo")),
+          e("span", { style:{fontSize:"12px", color:"#c8a96e"} }, langs)
+        ),
+        e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"5px"} },
+          (sec ? sec.icon+" "+sec.label : item.sectionId) +
+          (item.coupleName ? " · 👫 "+item.coupleName : "") +
+          (item.day ? " · 📅 "+item.day : "") +
+          (item.time ? " · 🕐 "+item.time : "")
+        )
+      );
+    });
+
+    const confirmBtn = importItems.length ? e("button", {
+      style:{padding:"10px 22px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"},
+      onClick: async () => {
+        const stamp = Date.now();
+        const newShares = importItems.map((item, idx) => ({...item, id:"s"+stamp+"-"+idx}));
+        await saveState({ ...appState, shares:[...(appState.shares||[]), ...newShares] });
+        const n = newShares.length;
+        importItems = []; importError = ""; adminTab = "list"; render();
+        alert(n+" condivision"+(n===1?"e":"i")+" importat"+(n===1?"a":"e")+" con successo. Le condivisioni già presenti non sono state modificate.");
+      }
+    }, "✅ Conferma importazione ("+importItems.length+")") : null;
+
+    bodyContent = e("div", { style:{maxWidth:"720px"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Carica un file JSON preparato per questa app. Prima del salvataggio vedrai l’anteprima. L’importazione aggiunge nuove condivisioni e non cancella quelle esistenti."),
+      fileInput,
+      importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
+      importItems.length ? e("div", { style:{marginTop:"20px"} },
+        e("div", { style:{fontSize:"14px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "Anteprima — "+importItems.length+" condivisioni"),
+        ...previewRows,
+        e("div", { style:{display:"flex", gap:"10px", marginTop:"18px", flexWrap:"wrap"} },
+          confirmBtn,
+          e("button", { style:{padding:"10px 18px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer"}, onClick:()=>{ importItems=[]; importError=""; render(); } }, "Annulla")
+        )
+      ) : null
+    );
   }
 
   // ── TAB: LIBRERIA ──
