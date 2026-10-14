@@ -5,8 +5,8 @@
 <h1>🎤 Segui il relatore — prova</h1><p>Laboratorio separato: non legge e non modifica le condivisioni del Meeting.</p>
 <section class="panel"><label>Lingua del relatore <select id="source"><option value="it-IT">Italiano</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="en-US">English</option><option value="pt-PT">Português</option></select></label><label>Lingua del partecipante <select id="target"><option value="it">Italiano</option><option value="es">Español</option><option value="fr">Français</option><option value="en">English</option><option value="pt">Português</option></select></label><div><button id="start">▶ Avvia microfono</button><button id="stop" disabled>⏸ Ferma</button><button id="prev">◀ Paragrafo precedente</button><button id="next">Paragrafo successivo ▶</button></div><label><input id="auto" type="checkbox" checked> Segui automaticamente (sperimentale)</label><p id="status" role="status">Pronto per la prova.</p><small>Per la prova vocale usa Chrome o Edge e autorizza il microfono. Il riconoscimento potrebbe non essere disponibile o richiedere un servizio del browser.</small><p id="heard"></p></section>
 <section class="panel"><h2>Testo del partecipante</h2><div id="reading"></div></section>
-</main><script>
-const segments=[
+<section class="panel"><h2>Verifica testi in cinque lingue</h2><p>Incolla qui un JSON con il campo translations contenente body per it, en, fr, es, pt. Questa verifica è locale: non salva dati.</p><textarea id="jsonText" rows="5" style="width:100%;background:#141423;color:#fff"></textarea><p><button id="checkTexts">Controlla paragrafi</button><button id="useTexts">Usa questi testi nella prova</button></p><p id="checkResult" role="status"></p></section></main><script type="module">
+let segments=[
 {it:"Benvenuti al Meeting Europeo. Siamo felici di essere qui insieme.",es:"Bienvenidos al Encuentro Europeo. Nos alegra estar aquí juntos.",fr:"Bienvenue à la Rencontre européenne. Nous sommes heureux d'être ici ensemble.",en:"Welcome to the European Meeting. We are happy to be here together.",pt:"Bem-vindos ao Encontro Europeu. Estamos felizes por estar aqui juntos."},
 {it:"Oggi vogliamo condividere con voi un momento importante del nostro cammino.",es:"Hoy queremos compartir con vosotros un momento importante de nuestro camino.",fr:"Aujourd'hui, nous souhaitons partager avec vous un moment important de notre cheminement.",en:"Today we want to share an important moment of our journey with you.",pt:"Hoje queremos partilhar convosco um momento importante do nosso caminho."},
 {it:"Grazie per la vostra presenza e per quello che costruiremo insieme.",es:"Gracias por vuestra presencia y por lo que construiremos juntos.",fr:"Merci pour votre présence et pour ce que nous construirons ensemble.",en:"Thank you for being here and for what we will build together.",pt:"Obrigado pela vossa presença e pelo que vamos construir juntos."}
@@ -20,4 +20,16 @@ function match(text){const lang=$("source").value.slice(0,2);const scores=segmen
 function stop(){running=false;if(recognition){recognition.onend=null;recognition.stop();recognition=null;}$("start").disabled=false;$("stop").disabled=true;$("status").textContent="Microfono fermo.";}
 $("start").onclick=()=>{const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech){$("status").textContent="Riconoscimento vocale non disponibile in questo browser.";return;}try{recognition=new Speech();recognition.lang=$("source").value;recognition.continuous=true;recognition.interimResults=false;recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){if(!e.results[i].isFinal)continue;const text=e.results[i][0].transcript;$("heard").textContent="Ascoltato: "+text;if($("auto").checked)match(text);}};recognition.onerror=e=>{$("status").textContent="Problema microfono/riconoscimento: "+e.error;};recognition.onend=()=>{if(running){try{recognition.start()}catch(e){stop()}}};recognition.start();running=true;$("start").disabled=true;$("stop").disabled=false;$("status").textContent="In ascolto (prova locale).";}catch(e){$("status").textContent="Impossibile avviare il microfono: "+e.message;}};
 $("stop").onclick=stop;$("prev").onclick=()=>setIndex(index-1);$("next").onclick=()=>setIndex(index+1);$("target").onchange=draw;$("source").onchange=()=>{if(running)stop();};draw();
+
+import {alignTranslations} from "./segui-relatore-allineamento.js";
+let checked=null;
+function checkInput(){
+ try {
+  const data=JSON.parse($("jsonText").value);
+  checked=alignTranslations(data);
+  $("checkResult").textContent="Paragrafi: "+JSON.stringify(checked.counts)+(checked.aligned?" — numero uguale nelle cinque lingue.":" — ATTENZIONE: numeri diversi. Verificare manualmente.");
+ }catch(err){checked=null;$("checkResult").textContent="Testo JSON non valido: "+err.message;}
+}
+$("checkTexts").onclick=checkInput;
+$("useTexts").onclick=()=>{checkInput();if(!checked||!checked.segments.length)return;segments=checked.segments;setIndex(0);$("status").textContent="Testi caricati soltanto nella prova locale."};
 </script></body></html>
