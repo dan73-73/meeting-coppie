@@ -4,7 +4,15 @@ export function words(text) {
 }
 export function splitText(text, lang, mode='sentence') {
   if (!text) return [];
-  if (mode==='paragraph') return text.match(/[^\n]+(?:\n(?!\n)[^\n]+)*(?:\n\s*\n|$)/g) || [text];
+  if (mode==='paragraph') {
+    const parts=text.match(/[\s\S]+?(?:\r?\n[ \t]*\r?\n(?:[ \t]*\r?\n)*|$)/g)||[text];
+    const out=[];let prefix='';
+    for(const part of parts) {
+      if(!part.trim()){if(out.length)out[out.length-1]+=part;else prefix+=part;}
+      else{out.push(prefix+part);prefix='';}
+    }
+    return out.length?out:[text];
+  }
   if (globalThis.Intl?.Segmenter) return [...new Intl.Segmenter(lang,{granularity:'sentence'}).segment(text)].map(x=>x.segment);
   return [text];
 }
