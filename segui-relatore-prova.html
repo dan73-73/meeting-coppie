@@ -4,7 +4,7 @@
 <style>body{font-family:system-ui,sans-serif;background:#141423;color:#f2e9d9;margin:0}main{max-width:850px;margin:auto;padding:24px}h1{color:#dfbd78}.panel{background:#252438;padding:20px;border-radius:14px;margin:18px 0}button,select{font:inherit;padding:10px;margin:5px;border-radius:8px}button{background:#d4b574;border:0;color:#171423;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}p.segment{padding:15px;border-radius:9px;line-height:1.7;border:1px solid #55516a}p.active{background:#4c3f22;border:2px solid #f3d98a}small{color:#c7bec2}#heard{min-height:2em}label{display:inline-block;margin:7px}</style></head><body><main>
 <h1>🎤 Segui il relatore — prova</h1><p>Laboratorio separato: non legge e non modifica le condivisioni del Meeting.</p>
 <section class="panel"><label>Lingua del relatore <select id="source"><option value="it-IT">Italiano</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="en-US">English</option><option value="pt-PT">Português</option></select></label><label>Lingua del partecipante <select id="target"><option value="it">Italiano</option><option value="es">Español</option><option value="fr">Français</option><option value="en">English</option><option value="pt">Português</option></select></label><div><button id="start">▶ Avvia microfono</button><button id="stop" disabled>⏸ Ferma</button><button id="prev">◀ Paragrafo precedente</button><button id="next">Paragrafo successivo ▶</button></div><label><input id="auto" type="checkbox" checked> Segui automaticamente (sperimentale)</label><p id="status" role="status">Pronto per la prova.</p><small>Per la prova vocale usa Chrome o Edge e autorizza il microfono. Il riconoscimento potrebbe non essere disponibile o richiedere un servizio del browser.</small><p id="heard"></p></section>
-<section class="panel"><h2>Testo del partecipante</h2><div id="reading"></div></section>
+<section class="panel"><h2>Prova su due schede dello stesso browser</h2><p><button id="openViewer">Apri seconda scheda come partecipante</button></p><p id="syncStatus">Sincronizzazione locale di prova: funziona soltanto tra schede dello stesso browser e dello stesso sito, non tra telefoni diversi.</p></section><section class="panel"><h2>Testo del partecipante</h2><div id="reading"></div></section>
 <section class="panel"><h2>Verifica testi in cinque lingue</h2><p>Incolla qui un JSON con il campo translations contenente body per it, en, fr, es, pt. Questa verifica è locale: non salva dati.</p><p><label>Oppure scegli un file JSON dal computer: <input id="jsonFile" type="file" accept=".json,application/json"></label></p><textarea id="jsonText" rows="5" style="width:100%;background:#141423;color:#fff"></textarea><p><button id="checkTexts">Controlla paragrafi</button><button id="useTexts">Usa questi testi nella prova</button></p><p id="checkResult" role="status"></p><p><label>Seleziona condivisione nel file <select id="shareChoice"><option value="0">Prima condivisione</option></select></label></p><p><label><input type="checkbox" id="scrollToggle" checked> Scorrimento automatico del testo</label></p></section></main><script type="module">
 let segments=[
 {it:"Benvenuti al Meeting Europeo. Siamo felici di essere qui insieme.",es:"Bienvenidos al Encuentro Europeo. Nos alegra estar aquí juntos.",fr:"Bienvenue à la Rencontre européenne. Nous sommes heureux d'être ici ensemble.",en:"Welcome to the European Meeting. We are happy to be here together.",pt:"Bem-vindos ao Encontro Europeu. Estamos felizes por estar aqui juntos."},
@@ -13,13 +13,26 @@ let segments=[
 ];let index=0,recognition=null,running=false;
 const $=id=>document.getElementById(id);
 function draw(){const lang=$("target").value;$("reading").replaceChildren(...segments.map((s,i)=>{const p=document.createElement("p");p.className="segment"+(i===index?" active":"");p.textContent=s[lang];p.onclick=()=>setIndex(i);return p}));}
-function setIndex(i){index=Math.max(0,Math.min(segments.length-1,i));draw();if($("scrollToggle")?.checked)document.querySelector(".active")?.scrollIntoView({block:"nearest",behavior:"smooth"});}
+const channel=("BroadcastChannel" in window)?new BroadcastChannel("relatore-demo-local"):null;
+const viewerMode=new URLSearchParams(location.search).get("viewer")==="1";
+function setIndex(i){index=Math.max(0,Math.min(segments.length-1,i));draw();if(channel&&!viewerMode)channel.postMessage({type:"position",index});if($("scrollToggle")?.checked)document.querySelector(".active")?.scrollIntoView({block:"nearest",behavior:"smooth"});}
 function norm(s){return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();}
 function score(s,t){const a=new Set(norm(s).split(" ").filter(w=>w.length>3));const b=new Set(norm(t).split(" ").filter(w=>w.length>3));let n=0;for(const w of a)if(b.has(w))n++;return n/Math.max(1,Math.min(a.size,b.size));}
 function match(text){const lang=$("source").value.slice(0,2);const scores=segments.map(s=>score(text,s[lang]));const best=Math.max(...scores),i=scores.indexOf(best);if(best>=.45 && Math.abs(i-index)<=1)setIndex(i);$("status").textContent=best>=.45?"Riconoscimento: possibile paragrafo "+(i+1):"Parole ascoltate, corrispondenza incerta: posizione invariata.";}
 function stop(){running=false;if(recognition){recognition.onend=null;recognition.stop();recognition=null;}$("start").disabled=false;$("stop").disabled=true;$("status").textContent="Microfono fermo.";}
 $("start").onclick=()=>{const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech){$("status").textContent="Riconoscimento vocale non disponibile in questo browser.";return;}try{recognition=new Speech();recognition.lang=$("source").value;recognition.continuous=true;recognition.interimResults=false;recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){if(!e.results[i].isFinal)continue;const text=e.results[i][0].transcript;$("heard").textContent="Ascoltato: "+text;if($("auto").checked)match(text);}};recognition.onerror=e=>{$("status").textContent="Problema microfono/riconoscimento: "+e.error;};recognition.onend=()=>{if(running){try{recognition.start()}catch(e){stop()}}};recognition.start();running=true;$("start").disabled=true;$("stop").disabled=false;$("status").textContent="In ascolto (prova locale).";}catch(e){$("status").textContent="Impossibile avviare il microfono: "+e.message;}};
 $("stop").onclick=stop;$("prev").onclick=()=>setIndex(index-1);$("next").onclick=()=>setIndex(index+1);$("target").onchange=draw;$("source").onchange=()=>{if(running)stop();};draw();
+if(viewerMode){
+ $("start").disabled=true;$("stop").disabled=true;$("prev").disabled=true;$("next").disabled=true;
+ $("status").textContent="Vista partecipante — prova tra schede dello stesso browser.";
+}
+$("openViewer").onclick=()=>window.open(location.pathname+"?viewer=1","_blank","noopener");
+if(channel)channel.onmessage=event=>{
+ if(!viewerMode||event.data?.type!=="position")return;
+ index=Math.max(0,Math.min(segments.length-1,Number(event.data.index)||0));
+ draw();
+ if($("scrollToggle").checked)document.querySelector(".active")?.scrollIntoView({block:"nearest",behavior:"smooth"});
+};
 
 import {alignTranslations} from "./segui-relatore-allineamento.js";
 let checked=null;let loadedItems=[];
