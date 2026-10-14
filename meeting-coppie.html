@@ -15,8 +15,10 @@ textarea, input, select { font-family: Georgia, serif; }
 <div id="app"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+import { createReadingIntegration } from './reading-integration.mjs';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
@@ -49,7 +51,16 @@ const DEFAULT_STATE = {
 const LOGO_URL = "https://i.ibb.co/C368QQ9D/image.png";
 
 async function saveState(state) {
-  await setDoc(doc(firestore, "state", "main"), state);
+  const ref = doc(firestore, "state", "main");
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(ref);
+    let reading = snap.data()?.readingFollow || null;
+    const share = (state.shares || []).find(s => s.id === state.activeShareId);
+    const validBlocks = blocks => Array.isArray(blocks) && blocks.length && ["it","en","fr","es","pt"].every(l => blocks.map(b=>b[l]||"").join("") === (share?.translations?.[l]?.body || ""));
+    if ((state.displayMode || "one") !== "one" || !share) reading = null;
+    else if (reading?.shareId !== share.id || !validBlocks(reading?.blocks)) reading = validBlocks(share.readingBlocks) ? {shareId:share.id,session:crypto.randomUUID(),blocks:share.readingBlocks,index:0,revision:0} : null;
+    tx.set(ref, {...state, readingFollow: reading});
+  });
 }
 function subscribeState(cb) {
   return onSnapshot(doc(firestore, "state", "main"), (snap) => {
@@ -109,10 +120,12 @@ let libEditId = null;
 let libFilterCommunity = "all";
 let importItems = [];
 let importError = "";
+const reading = createReadingIntegration({db:firestore,e,getState:()=>appState,isAdmin:()=>adminAuth,getView:()=>currentView,refresh:()=>render()});
 
 window.addEventListener("hashchange", () => {
   currentView = window.location.hash === "#couple" ? "couple" : "admin";
   couplePageIndex = 0;
+  reading.sync();
   render();
 });
 
@@ -151,7 +164,7 @@ function renderShareCard(share, lang, section, ui) {
   const parts = [
     section ? e("div", { style:{display:"inline-block", padding:"4px 14px", borderRadius:"20px", background:"rgba(200,169,110,0.12)", border:"1px solid rgba(200,169,110,0.25)", color:"#c8a96e", fontSize:"13px", marginBottom:"16px"} }, section.icon + " " + section.label) : null,
     e("h2", { style:{fontSize:"23px", fontWeight:"600", color:"#e8dcc8", marginBottom:"14px", lineHeight:"1.35"} }, content?.title || "—"),
-    e("p", { style:{fontSize:"16px", lineHeight:"1.8", color:"#c8b89a", marginBottom:"16px", whiteSpace:"pre-wrap"} }, content?.body || ""),
+    reading.body(share, lang, content),
   ];
   if (share.imageUrl) parts.push(e("img", { src:share.imageUrl, style:{width:"100%", borderRadius:"14px", marginBottom:"16px", maxHeight:"300px", objectFit:"cover"} }));
   parts.push(e("div", { style:{fontSize:"11px", color:"#706050", textAlign:"center", letterSpacing:"1px", marginTop:"16px"} }, ui.by));
@@ -683,7 +696,7 @@ function renderAdmin() {
 
   return e("div", { style:{minHeight:"100vh", display:"flex", flexDirection:"column"} },
     header,
-    e("div", { style:{flex:"1", padding:"20px", maxWidth:"820px", width:"100%", margin:"0 auto"} }, bodyContent||e("div",{}))
+    e("div", { style:{flex:"1", padding:"20px", maxWidth:"820px", width:"100%", margin:"0 auto"} }, adminTab === "list" ? reading.panel() : null, bodyContent||e("div",{}))
   );
 }
 
@@ -840,11 +853,13 @@ function render() {
 
 onAuthStateChanged(auth, user => {
   adminAuth = !!user && user.uid === ADMIN_UID;
+  reading.sync();
   render();
 });
 
 await initState();
-subscribeState(state => { appState = {...DEFAULT_STATE, ...state}; render(); });
+subscribeState(state => { appState = {...DEFAULT_STATE, ...state}; reading.sync(); render(); });
 </script>
 </body>
 </html>
+
