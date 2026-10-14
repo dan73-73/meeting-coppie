@@ -34,6 +34,22 @@ if(channel)channel.onmessage=event=>{
  if($("scrollToggle").checked)document.querySelector(".active")?.scrollIntoView({block:"nearest",behavior:"smooth"});
 };
 
+
+// Il canale locale invia anche i testi di prova: serve solo a simulare una sessione.
+if(channel){
+ const previous=channel.onmessage;
+ channel.onmessage=event=>{
+  if(event.data?.type==="segments"&&viewerMode&&Array.isArray(event.data.segments)){
+   segments=event.data.segments;index=0;draw();return;
+  }
+  if(event.data?.type==="request"&&!viewerMode){
+   channel.postMessage({type:"segments",segments});channel.postMessage({type:"position",index});return;
+  }
+  previous?.(event);
+ };
+ if(viewerMode)channel.postMessage({type:"request"});
+}
+
 import {alignTranslations} from "./segui-relatore-allineamento.js";
 let checked=null;let loadedItems=[];
 $("shareChoice").onchange=()=>checkInput();
@@ -46,5 +62,5 @@ function checkInput(){
  }catch(err){checked=null;$("checkResult").textContent="Testo JSON non valido: "+err.message;}
 }
 $("checkTexts").onclick=checkInput;
-$("useTexts").onclick=()=>{checkInput();if(!checked||!checked.segments.length)return;if(!checked.aligned&&!confirm("I paragrafi non coincidono nelle cinque lingue. Vuoi proseguire soltanto per la prova?"))return;segments=checked.segments;setIndex(0);$("status").textContent="Testi caricati soltanto nella prova locale."};
+$("useTexts").onclick=()=>{checkInput();if(!checked||!checked.segments.length)return;if(!checked.aligned&&!confirm("I paragrafi non coincidono nelle cinque lingue. Vuoi proseguire soltanto per la prova?"))return;segments=checked.segments;if(channel&&!viewerMode)channel.postMessage({type:"segments",segments});setIndex(0);$("status").textContent="Testi caricati soltanto nella prova locale."};
 </script></body></html>
