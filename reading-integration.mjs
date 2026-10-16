@@ -30,6 +30,17 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     r.onend=()=>{if(running)restart=setTimeout(()=>{try{r.start();}catch(err){stop();message(err.message);}},350);};
     try{r.start();}catch(err){stop();throw err;}
   }
+  // One-step language change in the admin panel. Chrome SpeechRecognition
+  // still needs the selected language; this is not automatic language detection.
+  function changeSpeakerLanguage(lang){
+    if(!locales[lang])return;
+    const wasRunning=running;
+    stop();
+    source=lang;
+    if(wasRunning)start();
+    else message('Lingua del relatore: '+names[source]+' · Premi Avvia lettura.');
+    refresh();
+  }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
     dialog?.remove();const current=getState().readingFollow;const cached={shareId:share.id,blocks:share.readingBlocks};const proposal=valid(current,share)?{blocks:current.blocks,mode:'saved'}:valid(cached,share)?{blocks:cached.blocks,mode:'saved'}:suggestBlocks(share.translations||{});
@@ -46,15 +57,15 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function panel(){
     const share=active(),r=getState().readingFollow;
-    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;stop();}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
+    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>changeSpeakerLanguage(event.target.value)});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
     const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore (cambio con riavvio automatico): ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
-      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'Il relatore usa il microfono di Chrome sul computer. Le coppie usano il QR abituale e vedono il passaggio sottolineato. Il riconoscimento vocale del browser può usare un servizio online.'));
+      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'Cambio lingua semplificato: seleziona la nuova lingua, il microfono riparte da solo se era già attivo. Il riconoscimento automatico della lingua non è ancora disponibile. Le coppie vedono i passaggi sottolineati tramite QR.'));
   }
   let lastScroll='';
   function body(share,lang,content){
