@@ -60,7 +60,6 @@ let autoRunning=false,autoTimer=null,autoLocaleIndex=0,autoLocked=false,autoLast
 const autoLanguages=['it','fr','es','en','pt'];
 const oldStopMic=stopMic;
 // Stop any active experimental recognition when leaving the session or using manual controls.
-const originalStopMic=stopMic;
 function stopAuto(){
   autoRunning=false;autoLocked=false;autoEpoch++;
   clearTimeout(autoTimer);autoTimer=null;
@@ -76,11 +75,18 @@ $('logout').addEventListener('click',stopAuto);
 $('reuse').onclick=run(async()=>{
   const share=available.find(s=>s.id===$('shares').value);
   if(!share)throw Error('Scegli una condivisione presente nell’elenco.');
-  if(live?.shareId!==share.id||!Array.isArray(live.blocks)||!live.blocks.length)throw Error('Questa condivisione non ha ancora passaggi salvati nella prova. Usa Prepara passaggi una sola volta.');
-  validateBlocks(live.blocks,share.translations);
+  const previewReady=live?.shareId===share.id&&Array.isArray(live.blocks)&&live.blocks.length>0;
+  const blocks=previewReady?live.blocks:share.readingBlocks;
+  if(!Array.isArray(blocks)||!blocks.length)throw Error('Questa condivisione non ha ancora passaggi salvati. Usa Prepara passaggi una sola volta.');
+  validateBlocks(blocks,share.translations);
   stopAuto();oldStopMic();
+  if(!previewReady){
+    if(!admin)throw Error('Accedi come amministratore.');
+    if(new TextEncoder().encode(JSON.stringify(blocks)).length>700000)throw Error('La condivisione è troppo grande per questa prova.');
+    await setDoc(ref,{session:crypto.randomUUID(),shareId:share.id,title:Object.fromEntries(LANGS.map(l=>[l,share.translations[l]?.title||''])),blocks,index:0,revision:0,sourceLang:$('sourceLang').value,updatedAt:Date.now()});
+  }
   $('mapping').classList.add('hidden');
-  $('micStatus').textContent='Passaggi già salvati e verificati. Premi Avvia ascolto automatico (prova).';
+  $('micStatus').textContent='Passaggi già salvati caricati. Premi Avvia ascolto automatico (prova).';
 });
 function autoScanCycle(epoch){
   if(!autoRunning||epoch!==autoEpoch||!live?.blocks?.length||!admin)return;
