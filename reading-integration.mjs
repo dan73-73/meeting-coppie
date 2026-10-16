@@ -1,4 +1,4 @@
-import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs';
+import {LANGS,suggestBlocks,validateBlocks,locatePassage,scorePassage,words} from './reading-follow.mjs';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
@@ -6,6 +6,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'};
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
+  let autoAssist=false, candidateLang=null, candidateVotes=0;
   let recognition=null,running=false,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
   function stop(){running=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
@@ -20,12 +21,29 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
   async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||!isAdmin())return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision)tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
+  // Experimental text-guided hint: a transcript is checked against the prepared
+  // translations. Never use this as proof of acoustic language identification.
+  function detectLanguageHint(text,blocks,index){
+    if(words(text).length<8)return null;
+    const choices=LANGS.map(lang=>({lang,score:Math.max(0,...blocks.slice(Math.max(0,index),Math.max(0,index)+4).map(b=>scorePassage(text,b[lang]||'')))})).sort((a,b)=>b.score-a.score);
+    if(choices[0].lang===source||choices[0].score<0.93||choices[0].score-(choices[1]?.score||0)<0.24)return null;
+    return choices[0].lang;
+  }
+  function considerLanguageHint(text,blocks,index){
+    if(!autoAssist)return;
+    const hint=detectLanguageHint(text,blocks,index);
+    if(hint!==candidateLang){candidateLang=hint;candidateVotes=hint?1:0;}else if(hint)candidateVotes++;
+    if(candidateVotes>=2){
+      candidateLang=null;candidateVotes=0;
+      message('Possibile lingua '+names[hint]+': conferma premendo '+names[hint]+' per cambiare.');
+    }
+  }
   function start(){
     const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
     stop();session=record.session;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
     r.onstart=()=>message('Microfono attivo · Relatore: '+names[source]);
-    r.onresult=event=>{const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
+    r.onresult=event=>{const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal){considerLanguageHint(text,live.blocks,Math.max(0,live.index));tail=combined.split(/\s+/).slice(-12).join(' ');}message('Microfono attivo · '+text);}};
     r.onerror=event=>{if(event.error==='no-speech')return;stop();message(event.error==='not-allowed'?'Microfono non autorizzato. Consenti il microfono a questa pagina e premi Avvia lettura.':'Microfono interrotto ('+event.error+'). Puoi usare Precedente e Successivo.');};
     r.onend=()=>{if(running)restart=setTimeout(()=>{try{r.start();}catch(err){stop();message(err.message);}},350);};
     try{r.start();}catch(err){stop();throw err;}
@@ -62,6 +80,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
+      e('label',{style:{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',color:'#c8b89a',marginBottom:'10px'}},
+        e('input',{type:'checkbox',...(autoAssist?{checked:''}:{}),onChange:event=>{autoAssist=event.target.checked;candidateLang=null;candidateVotes=0;message(autoAssist?'Suggerimenti sperimentali attivi. La scelta della lingua resta manuale.':'Suggerimenti disattivati.');}}),
+        'Suggerisci cambio lingua dai testi (sperimentale; non cambia nulla da solo)'
+      ),
       e('div',{style:{margin:'12px 0',padding:'12px',borderRadius:'10px',background:'rgba(255,255,255,.035)'}},
         e('p',{style:{fontSize:'13px',color:'#c8a96e',marginBottom:'9px'}},'Cambio rapido relatore · un tocco, senza fermare e riavviare'),
         e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
