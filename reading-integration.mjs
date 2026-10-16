@@ -62,6 +62,13 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
+      e('div',{style:{margin:'12px 0',padding:'12px',borderRadius:'10px',background:'rgba(255,255,255,.035)'}},
+        e('p',{style:{fontSize:'13px',color:'#c8a96e',marginBottom:'9px'}},'Cambio rapido relatore · un tocco, senza fermare e riavviare'),
+        e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
+          ...LANGS.map(lang=>e('button',{type:'button',style:{...buttonStyle,background:source===lang?'rgba(200,169,110,.25)':'transparent',borderColor:source===lang?'#e8c87a':'rgba(200,169,110,.4)',fontWeight:source===lang?'bold':'normal'},onClick:()=>{try{changeSpeakerLanguage(lang);}catch(err){stop();message(err.message||String(err));}}},({it:'🇮🇹',fr:'🇫🇷',es:'🇪🇸',en:'🇺🇸',pt:'🇵🇹'})[lang]+' '+names[lang]))
+        ),
+        e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'9px'}},'Modalità assistita gratuita: scegli la bandiera quando cambia la lingua. Non è un riconoscimento automatico della lingua.')
+      ),
       e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore (cambio con riavvio automatico): ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
