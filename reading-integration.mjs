@@ -6,10 +6,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'};
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let autoAssist=false, candidateLang=null, candidateVotes=0;
+  let autoAssist=false, candidateLang=null, candidateVotes=0, suggestedLanguage=null;
   let recognition=null,running=false,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
-  function stop(){running=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
+  function stop(){running=false;pending=null;candidateLang=null;candidateVotes=0;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   function sync(){const s=getState(),share=active();if(running&&(!isAdmin()||getView()!=='admin'||!valid(s.readingFollow,share)||s.readingFollow.session!==session))stop();}
@@ -35,7 +35,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(hint!==candidateLang){candidateLang=hint;candidateVotes=hint?1:0;}else if(hint)candidateVotes++;
     if(candidateVotes>=2){
       candidateLang=null;candidateVotes=0;
-      message('Possibile lingua '+names[hint]+': conferma premendo '+names[hint]+' per cambiare.');
+      if(suggestedLanguage!==hint){suggestedLanguage=hint;refresh();}
+      message('Possibile lingua '+names[hint]+': conferma il cambio nel riquadro.');
     }
   }
   function start(){
@@ -55,6 +56,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const wasRunning=running;
     stop();
     source=lang;
+    suggestedLanguage=null;
     if(wasRunning)start();
     else message('Lingua del relatore: '+names[source]+' · Premi Avvia lettura.');
     refresh();
@@ -81,9 +83,14 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
       e('label',{style:{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',color:'#c8b89a',marginBottom:'10px'}},
-        e('input',{type:'checkbox',...(autoAssist?{checked:''}:{}),onChange:event=>{autoAssist=event.target.checked;candidateLang=null;candidateVotes=0;message(autoAssist?'Suggerimenti sperimentali attivi. La scelta della lingua resta manuale.':'Suggerimenti disattivati.');}}),
+        e('input',{type:'checkbox',...(autoAssist?{checked:''}:{}),onChange:event=>{autoAssist=event.target.checked;candidateLang=null;candidateVotes=0;suggestedLanguage=null;message(autoAssist?'Suggerimenti sperimentali attivi. La scelta della lingua resta manuale.':'Suggerimenti disattivati.');}}),
         'Suggerisci cambio lingua dai testi (sperimentale; non cambia nulla da solo)'
       ),
+      suggestedLanguage&&autoAssist?e('div',{style:{padding:'12px',marginBottom:'10px',border:'1px solid #c8a96e',borderRadius:'10px'}},
+        e('p',{style:{fontSize:'13px',marginBottom:'8px',color:'#e8dcc8'}},'Il testo sembra in '+names[suggestedLanguage]+'. Confermare prima di cambiare lingua.'),
+        e('button',{type:'button',style:{...buttonStyle,background:'rgba(200,169,110,.22)'},onClick:()=>{try{changeSpeakerLanguage(suggestedLanguage);}catch(err){stop();message(err.message||String(err));}}},'Conferma '+names[suggestedLanguage]),
+        e('button',{type:'button',style:buttonStyle,onClick:()=>{suggestedLanguage=null;refresh();}},'Ignora')
+      ):null,
       e('div',{style:{margin:'12px 0',padding:'12px',borderRadius:'10px',background:'rgba(255,255,255,.035)'}},
         e('p',{style:{fontSize:'13px',color:'#c8a96e',marginBottom:'9px'}},'Cambio rapido relatore · un tocco, senza fermare e riavviare'),
         e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
