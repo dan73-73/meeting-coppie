@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meeting – Prova ascolto automatico sperimentale</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#10111b;color:#efe9dd;font:17px/1.65 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:24px}h1{font:600 28px Georgia;color:#e7c77f}h2{font-size:20px}button,select,input,textarea{font:inherit;border:1px solid #776746;border-radius:9px;padding:10px;background:#222332;color:inherit}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#e7c77f;color:#161722;font-weight:bold}.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0}.panel{background:#191a28;border:1px solid #3e3a32;padding:20px;border-radius:14px;margin:18px 0}.hint{font-size:14px;color:#c0bcaf}.error{color:#ffb4ad}.status{color:#e7c77f}input{max-width:100%}textarea{width:100%;min-height:110px;white-space:pre-wrap;font-size:14px}.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.passage{white-space:pre-wrap;padding:12px;border-left:3px solid transparent;margin:8px 0;overflow-wrap:anywhere}.passage.active{background:#342e1e;border-color:#e7c77f;text-decoration:underline;text-decoration-color:#e7c77f;text-decoration-thickness:3px;text-underline-offset:5px}.passage button{font-size:13px;padding:3px 9px;float:right;margin-left:10px}a{color:#e7c77f}label{display:block}.hidden{display:none!important}#reader{max-width:740px;margin:auto}#heard{min-height:30px}#editor{overflow:auto}@media(max-width:760px){main{padding:16px}.grid{grid-template-columns:1fr}h1{font-size:24px}} 
+</style></head><body><main>
+<h1>Lettura sincronizzata · Prova automatica</h1>
+<p class="hint">Le traduzioni sono quelle già preparate. Il relatore legge e il passaggio corrispondente viene sottolineato nelle cinque lingue.</p>
+<div class="bar"><a href="#couple" id="coupleLink">Vista partecipanti</a><a href="#admin" id="adminLink">Pannello relatore</a></div>
+<p id="connection" class="status" role="status">Collegamento in corso…</p>
+<section id="admin" class="hidden">
+<div id="login" class="panel"><h2>Accesso amministratore</h2><form id="loginForm"><div class="bar"><input type="email" id="email" placeholder="Email amministratore" autocomplete="username" required><input type="password" id="password" placeholder="Password" autocomplete="current-password" required><button class="primary">Accedi</button></div></form><p id="loginError" class="error" role="alert"></p></div>
+<div id="controls" class="hidden">
+<div class="panel"><h2>1. Scegli la condivisione</h2><div class="bar"><select id="shares" aria-label="Condivisione"></select><button id="reuse" class="primary">Usa passaggi già salvati</button><button id="load">Prepara passaggi (solo se necessario)</button><button id="demo">Carica esempio di prova</button></div><p class="hint">Le condivisioni vengono lette dalla tua app. Questa prova salva soltanto nel documento separato <code>state/reading-preview</code>.</p></div>
+<div id="mapping" class="panel hidden"><h2>2. Collega i passaggi</h2><p id="mappingHint" class="hint"></p><p class="hint">Ogni riga deve contenere lo stesso passaggio nelle cinque lingue. Puoi dividere una cella nel punto del cursore e unire celle consecutive. I testi originali vengono conservati esattamente.</p><div id="editor"></div><label><input type="checkbox" id="confirmed"> Ho controllato che i passaggi di ogni riga corrispondano nelle cinque lingue.</label><div class="bar"><button id="publish" class="primary">Apri questa condivisione nella prova</button></div></div>
+<div class="panel"><h2>3. Segui la lettura</h2><div class="bar"><label>Lingua del relatore <select id="sourceLang"></select></label><button id="start" class="primary">Avvia microfono</button><button id="stop">Ferma microfono</button><button id="autoStart" class="primary" type="button">🎙️ Avvia ascolto automatico (prova)</button></div><p id="micStatus" role="status">Microfono fermo.</p><p id="heard" class="hint"></p><div class="bar"><button id="prev">← Precedente</button><button id="next">Successivo →</button><button id="pause">Sospendi sottolineatura</button><button id="logout">Esci</button></div><p class="hint">Per la prova vocale usa Chrome sul computer. Autorizza il microfono solo sul computer del relatore. Il riconoscimento vocale del browser può usare un servizio online. La prova segue passaggi, non singole parole tradotte.</p></div>
+<div class="panel"><h2>Collegamento per il cellulare</h2><a id="phoneUrl"></a><p class="hint">Apri questo link sul cellulare, scegli la lingua e lascia aperta la pagina. Non serve il microfono sul telefono.</p></div>
+</div></section>
+<section id="reader"><div class="bar"><label>Lingua di lettura <select id="targetLang"></select></label><label><input id="scroll" type="checkbox" checked> Segui il passaggio</label></div><h2 id="title"></h2><p id="position" class="status"></p><div id="passages"></div></section>
+<p id="operationError" class="error" role="alert"></p>
+</main>
+<script type="module">
+import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs';
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {getFirestore,doc,onSnapshot,setDoc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+const config={apiKey:'AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o',authDomain:'meeting---coppie.firebaseapp.com',projectId:'meeting---coppie',storageBucket:'meeting---coppie.firebasestorage.app',messagingSenderId:'1027854978190',appId:'1:1027854978190:web:a368caebc29bb1013e0ddf'};
+const app=initializeApp(config),db=getFirestore(app),auth=getAuth(app),ref=doc(db,'state','reading-preview');
+const UID='S80JhCm2aJUqLpCNgzbX8NTp5v03',names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'},locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
+const $=id=>document.getElementById(id);
+let admin=false,available=[],prepared=null,lanes={},live=null,recognition=null,listening=false,tail='',restartTimer=null,pending=null,sending=false,sendTimer=null,terminalError=false;
+const error=err=>{$('operationError').textContent=err.code==='permission-denied'?'Firebase non autorizza il documento separato di prova. La sincronizzazione non è attiva; le condivisioni originali non sono state modificate.':(err.message||String(err));};
+const run=fn=>async()=>{try{$('operationError').textContent='';await fn();}catch(err){error(err);}};
+for(const id of ['sourceLang','targetLang'])for(const l of LANGS){const o=document.createElement('option');o.value=l;o.textContent=names[l];$(id).append(o);}
+$('targetLang').value=localStorage.getItem('reading-preview-language')||'it';
+function view(){const isAdmin=location.hash!=='#couple';$('admin').classList.toggle('hidden',!isAdmin);$('login').classList.toggle('hidden',admin);$('controls').classList.toggle('hidden',!admin);if(!isAdmin)stopMic();renderReader();}
+window.addEventListener('hashchange',view);
+const phone=new URL(location.href);phone.hash='couple';$('phoneUrl').href=phone.href;$('phoneUrl').textContent=phone.href;
+$('loginForm').addEventListener('submit',async ev=>{ev.preventDefault();$('loginError').textContent='';try{await signInWithEmailAndPassword(auth,$('email').value,$('password').value);$('password').value='';}catch(err){$('loginError').textContent='Accesso non riuscito. Controlla email e password.';}});
+onAuthStateChanged(auth,user=>{admin=user?.uid===UID;if(user&&!admin)$('loginError').textContent='Questo account non è amministratore.';if(!admin)stopMic();view();});
+onSnapshot(doc(db,'state','main'),snap=>{const original=snap.data()||{};available=[...(original.shares||[]),...(original.library||[])];const selected=$('shares').value;$('shares').replaceChildren();for(const s of available){const o=document.createElement('option');o.value=s.id;o.textContent=[s.translations?.it?.title||'Senza titolo',s.coupleName,s.day,s.time].filter(Boolean).join(' · ');$('shares').append(o);}if(available.some(s=>s.id===selected))$('shares').value=selected;},error);
+onSnapshot(ref,snap=>{const incoming=snap.exists()?snap.data():null;if(live?.session!==incoming?.session)stopMic();live=incoming;$('connection').textContent=snap.metadata.fromCache?'Connessione da verificare: dati dalla memoria del browser.':'Collegamento Firebase attivo.';renderReader();},err=>{$('connection').textContent='Sincronizzazione non disponibile.';error(err);});
+async function prepare(share){stopMic();prepared=structuredClone(share);let proposal=suggestBlocks(prepared.translations);lanes=Object.fromEntries(LANGS.map(l=>[l,proposal.blocks.map(b=>b[l])]));$('confirmed').checked=false;$('mapping').classList.remove('hidden');$('mappingHint').textContent=proposal.mode==='manual'?'La suddivisione non coincide: dividi ciascuna lingua in passaggi corrispondenti.':'Suddivisione proposta per '+(proposal.mode==='paragraph'?'paragrafi':'frasi')+'. Lo stesso numero di passaggi non garantisce lo stesso significato: controlla le righe prima di aprire.';renderEditor();}
+function renderEditor(){const root=$('editor');root.replaceChildren();const count=Math.max(...LANGS.map(l=>lanes[l].length));for(let i=0;i<count;i++){const row=document.createElement('div');row.className='grid panel';for(const l of LANGS){const cell=document.createElement('div');const label=document.createElement('label');label.textContent=names[l]+' · '+(i+1);cell.append(label);if(i<lanes[l].length){const ta=document.createElement('textarea');ta.value=lanes[l][i];ta.readOnly=true;ta.setAttribute('aria-label',label.textContent);cell.append(ta);const bar=document.createElement('div');bar.className='bar';const split=document.createElement('button');split.textContent='Dividi al cursore';split.onclick=()=>{const p=ta.selectionStart;if(p>0&&p<ta.value.length){lanes[l].splice(i,1,ta.value.slice(0,p),ta.value.slice(p));$('confirmed').checked=false;renderEditor();}};const merge=document.createElement('button');merge.textContent='Unisci al seguente';merge.disabled=i===lanes[l].length-1;merge.onclick=()=>{lanes[l].splice(i,2,lanes[l][i]+lanes[l][i+1]);$('confirmed').checked=false;renderEditor();};bar.append(split,merge);cell.append(bar);}else{cell.append(document.createTextNode('Passaggio mancante'));}row.append(cell);}root.append(row);}}
+$('load').onclick=run(async()=>{const share=available.find(s=>s.id===$('shares').value);if(!share)throw Error('Non ci sono condivisioni disponibili. Puoi provare con l’esempio.');await prepare(share);});
+const demo={id:'demo',translations:{it:{title:'Esempio di lettura',body:'Oggi siamo felici di essere qui insieme.\n\nAbbiamo attraversato momenti difficili nella nostra vita.\n\nAscoltarci con attenzione ci ha aiutato a ritrovarci.\n\nGrazie per condividere questo cammino con noi.'},en:{title:'Reading example',body:'Today we are happy to be here together.\n\nWe have gone through difficult times in our lives.\n\nListening carefully to each other has helped us reconnect.\n\nThank you for sharing this journey with us.'},fr:{title:'Exemple de lecture',body:'Aujourd’hui, nous sommes heureux d’être ici ensemble.\n\nNous avons traversé des moments difficiles dans notre vie.\n\nNous écouter attentivement nous a aidés à nous retrouver.\n\nMerci de partager ce chemin avec nous.'},es:{title:'Ejemplo de lectura',body:'Hoy estamos felices de estar aquí juntos.\n\nHemos pasado por momentos difíciles en nuestra vida.\n\nEscucharnos con atención nos ha ayudado a reencontrarnos.\n\nGracias por compartir este camino con nosotros.'},pt:{title:'Exemplo de leitura',body:'Hoje estamos felizes por estar aqui juntos.\n\nPassámos por momentos difíceis na nossa vida.\n\nEscutarmo-nos com atenção ajudou-nos a reencontrar-nos.\n\nObrigado por partilharem este caminho connosco.'}}};
+$('demo').onclick=run(()=>prepare(demo));
+$('publish').onclick=run(async()=>{if(!admin)throw Error('Accedi come amministratore.');if(!$('confirmed').checked)throw Error('Controlla e conferma la corrispondenza dei passaggi.');const count=lanes.it.length;if(!LANGS.every(l=>lanes[l].length===count))throw Error('Il numero di passaggi deve essere uguale nelle cinque lingue.');const blocks=lanes.it.map((_,i)=>Object.fromEntries(LANGS.map(l=>[l,lanes[l][i]])));validateBlocks(blocks,prepared.translations);if(new TextEncoder().encode(JSON.stringify(blocks)).length>700000)throw Error('Questa condivisione è troppo grande per la prova.');stopMic();await setDoc(ref,{session:crypto.randomUUID(),shareId:prepared.id,title:Object.fromEntries(LANGS.map(l=>[l,prepared.translations[l]?.title||''])),blocks,index:0,revision:0,sourceLang:$('sourceLang').value,updatedAt:Date.now()});});
+function renderReader(){const lang=$('targetLang').value;$('title').textContent=live?.title?.[lang]||'';$('position').textContent=live?.blocks?.length?(live.index<0?'Sottolineatura sospesa.':`Passaggio ${live.index+1} / ${live.blocks.length}`):'In attesa della condivisione di prova…';const root=$('passages');const key=live?.session+'|'+lang+'|'+admin+'|'+location.hash;if(root.dataset.key!==key){root.dataset.key=key;root.replaceChildren();for(const [i,b]of(live?.blocks||[]).entries()){const p=document.createElement('div');p.className='passage';p.dataset.index=i;if(admin&&location.hash!=='#couple'){const btn=document.createElement('button');btn.textContent='Riparti da qui';btn.onclick=run(()=>move(i));p.append(btn);}const span=document.createElement('span');span.textContent=b[lang]||'';p.append(span);root.append(p);}}for(const p of root.children)p.classList.toggle('active',Number(p.dataset.index)===live?.index);const active=root.querySelector('.active');if(active&&$('scroll').checked&&root.dataset.lastIndex!==String(live.index)){active.scrollIntoView({behavior:'smooth',block:'center'});}root.dataset.lastIndex=String(live?.index);}
+$('targetLang').onchange=()=>{localStorage.setItem('reading-preview-language',$('targetLang').value);$('passages').dataset.lastIndex='';renderReader();};
+async function move(index){if(!admin||!live?.session)throw Error('Apri prima una condivisione di prova.');pending=null;tail='';const bounded=Math.max(-1,Math.min(index,live.blocks.length-1));const session=live.session;await runTransaction(db,async tx=>{const snap=await tx.get(ref);const state=snap.data();if(state?.session!==session)throw Error('La condivisione di prova è cambiata.');tx.update(ref,{index:bounded,revision:(state.revision||0)+1,updatedAt:Date.now()});});}
+$('prev').onclick=run(()=>{stopMic();return move((live?.index??0)-1);});$('next').onclick=run(()=>{stopMic();return move((live?.index??-1)+1);});$('pause').onclick=run(()=>{stopMic();return move(-1);});$('logout').onclick=run(()=>signOut(auth));
+function queueIndex(index){if(!live||index===live.index)return;pending={index,session:live.session,revision:live.revision||0};if(!sendTimer)sendTimer=setTimeout(flush,250);}
+async function flush(){sendTimer=null;if(sending||!pending)return;const item=pending;pending=null;if(!listening||!admin||live?.session!==item.session)return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref);const state=snap.data();if(state?.session===item.session&&(state.revision||0)===item.revision)tx.update(ref,{index:item.index,updatedAt:Date.now()});});}catch(err){stopMic();error(err);}finally{sending=false;if(pending&&!sendTimer)sendTimer=setTimeout(flush,250);}}
+function stopMic(){listening=false;pending=null;clearTimeout(restartTimer);clearTimeout(sendTimer);sendTimer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}$('micStatus').textContent='Microfono fermo.';}
+$('stop').onclick=stopMic;$('sourceLang').onchange=stopMic;
+$('start').onclick=run(async()=>{if(!admin||!live?.blocks?.length)throw Error('Apri prima una condivisione di prova.');const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Il riconoscimento vocale non è disponibile in questo browser. Apri la prova in Chrome sul computer.');stopMic();const lang=$('sourceLang').value;recognition=new Recognition();recognition.lang=locales[lang];recognition.continuous=true;recognition.interimResults=true;terminalError=false;tail='';listening=true;const r=recognition;r.onstart=()=>{$('micStatus').textContent='Microfono attivo: leggi nella lingua '+names[lang]+'.';};r.onresult=ev=>{for(let i=ev.resultIndex;i<ev.results.length;i++){const text=ev.results[i][0].transcript;$('heard').textContent='Riconosciuto: '+text;const combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,lang,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,lang,Math.max(0,live.index));if(index!==null)queueIndex(index);if(ev.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');}};r.onerror=ev=>{if(ev.error==='no-speech')return;terminalError=true;stopMic();$('micStatus').textContent='Microfono interrotto: '+ev.error+'. Puoi usare i comandi manuali.';};r.onend=()=>{if(listening&&!terminalError)restartTimer=setTimeout(()=>{try{r.start();}catch(err){stopMic();error(err);}},350);};try{r.start();}catch(err){stopMic();throw err;}});
+window.addEventListener('pagehide',stopMic);view();
+
+let autoRunning=false,autoTimer=null,autoLocaleIndex=0,autoLocked=false,autoLastMatch=0,autoEpoch=0;
+const autoLanguages=['it','fr','es','en','pt'];
+const oldStopMic=stopMic;
+// Stop any active experimental recognition when leaving the session or using manual controls.
+function stopAuto(){
+  autoRunning=false;autoLocked=false;autoEpoch++;
+  clearTimeout(autoTimer);autoTimer=null;
+}
+$('stop').addEventListener('click',stopAuto);
+$('start').addEventListener('click',stopAuto);
+$('sourceLang').addEventListener('change',stopAuto);
+$('prev').addEventListener('click',stopAuto);
+$('next').addEventListener('click',stopAuto);
+$('pause').addEventListener('click',stopAuto);
+$('logout').addEventListener('click',stopAuto);
+// Reuse ONLY an already saved, matching preview; never alter state/main or the original text.
+$('reuse').onclick=run(async()=>{
+  const share=available.find(s=>s.id===$('shares').value);
+  if(!share)throw Error('Scegli una condivisione presente nell’elenco.');
+  const previewReady=live?.shareId===share.id&&Array.isArray(live.blocks)&&live.blocks.length>0;
+  const blocks=previewReady?live.blocks:share.readingBlocks;
+  if(!Array.isArray(blocks)||!blocks.length)throw Error('Questa condivisione non ha ancora passaggi salvati. Usa Prepara passaggi una sola volta.');
+  validateBlocks(blocks,share.translations);
+  stopAuto();oldStopMic();
+  if(!previewReady){
+    if(!admin)throw Error('Accedi come amministratore.');
+    if(new TextEncoder().encode(JSON.stringify(blocks)).length>700000)throw Error('La condivisione è troppo grande per questa prova.');
+    await setDoc(ref,{session:crypto.randomUUID(),shareId:share.id,title:Object.fromEntries(LANGS.map(l=>[l,share.translations[l]?.title||''])),blocks,index:0,revision:0,sourceLang:$('sourceLang').value,updatedAt:Date.now()});
+  }
+  $('mapping').classList.add('hidden');
+  $('micStatus').textContent='Passaggi già salvati caricati. Premi Avvia ascolto automatico (prova).';
+});
+function autoScanCycle(epoch){
+  if(!autoRunning||epoch!==autoEpoch||!live?.blocks?.length||!admin)return;
+  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!Recognition){stopAuto();$('micStatus').textContent='Chrome non supporta questo riconoscimento vocale.';return;}
+  const language=autoLanguages[autoLocaleIndex%autoLanguages.length];
+  const r=new Recognition();
+  recognition=r;listening=true;r.lang=locales[language];r.continuous=true;r.interimResults=true;
+  let nextScheduled=false;
+  const advance=()=>{
+    if(nextScheduled||!autoRunning||epoch!==autoEpoch)return;
+    nextScheduled=true;clearTimeout(autoTimer);
+    if(!autoLocked||Date.now()-autoLastMatch>10000){autoLocked=false;autoLocaleIndex++;}
+    autoTimer=setTimeout(()=>autoScanCycle(epoch),450);
+  };
+  r.onstart=()=>{
+    $('micStatus').textContent='Ricerca automatica sperimentale: ascolto '+names[language]+'. Potrebbe perdere le prime frasi.';
+    clearTimeout(autoTimer);
+    autoTimer=setTimeout(()=>{
+      if(!autoRunning||epoch!==autoEpoch)return;
+      if(autoLocked&&Date.now()-autoLastMatch<10000){autoTimer=setTimeout(()=>{if(autoRunning&&epoch===autoEpoch)r.stop();},3500);}
+      else r.stop();
+    },4500);
+  };
+  r.onresult=ev=>{
+    if(!autoRunning||epoch!==autoEpoch||!admin)return;
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const spoken=ev.results[i][0].transcript;
+      $('heard').textContent='Riconosciuto ('+names[language]+'): '+spoken;
+      const index=locatePassage(spoken,live.blocks,language,Math.max(0,live.index));
+      if(index!==null){
+        autoLocked=true;autoLastMatch=Date.now();queueIndex(index);
+        $('micStatus').textContent='Lingua probabile: '+names[language]+' — passaggio '+(index+1)+'.';
+      }
+    }
+  };
+  r.onerror=ev=>{
+    if(ev.error==='not-allowed'||ev.error==='service-not-allowed'){stopAuto();oldStopMic();$('micStatus').textContent='Microfono non autorizzato: controlla il permesso in Chrome.';}
+    else if(ev.error!=='no-speech'&&ev.error!=='aborted'){$('micStatus').textContent='Ascolto incerto: '+ev.error;}
+  };
+  r.onend=advance;
+  try{r.start();}catch(err){stopAuto();oldStopMic();$('micStatus').textContent='Impossibile avviare: '+err.message;}
+}
+$('autoStart').onclick=run(async()=>{
+  if(!admin||!live?.blocks?.length)throw Error('Apri prima la condivisione nella prova. Non serve riprepararla se è già presente.');
+  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!Recognition)throw Error('Usa Chrome sul computer per la prova.');
+  stopAuto();oldStopMic();autoRunning=true;autoLocked=false;autoLastMatch=0;autoLocaleIndex=0;
+  autoScanCycle(autoEpoch);
+});
+window.addEventListener('pagehide',stopAuto);
+// The preview remains experimental: Chrome recognizes one configured locale at a time.
+</script></body></html>
