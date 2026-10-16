@@ -145,35 +145,33 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function panel(){
     const share=active(),r=getState().readingFollow;
-    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>changeSpeakerLanguage(event.target.value)});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
-    const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
+    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>changeSpeakerLanguage(event.target.value)});
+    for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
+    const btn=(text,fn)=>e('button',{type:'button',style:buttonStyle,onClick:action(fn)},text);
+    const fallback=e('details',{style:{marginTop:'12px',padding:'10px',border:'1px solid rgba(200,169,110,.22)',borderRadius:'10px'}},
+      e('summary',{style:{cursor:'pointer',color:'#c8a96e'}},'Comandi manuali di emergenza'),
+      e('p',{style:{color:'#a09080',fontSize:'12px',margin:'10px 0'}},'Usali solo se il riconoscimento automatico non segue la lettura.'),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
+        ...LANGS.map(lang=>e('button',{type:'button',style:buttonStyle,onClick:()=>{try{changeSpeakerLanguage(lang);}catch(err){message(err.message||String(err));}}},({it:'🇮🇹',fr:'🇫🇷',es:'🇪🇸',en:'🇺🇸',pt:'🇵🇹'})[lang]+' '+names[lang]))),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center',marginTop:'10px'}},
+        e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua relatore: ',select),
+        btn('Avvia manualmente',()=>valid(getState().readingFollow,active())?start():prepare()),
+        btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),
+        btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})
+      )
+    );
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
-      e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{padding:'12px',border:'1px solid rgba(200,169,110,.5)',borderRadius:'10px',marginBottom:'12px'}},
-        btn('🎙️ AVVIA ASCOLTO AUTOMATICO (PROVA)',()=>valid(getState().readingFollow,active())?startExperimentalScan():prepare()),
-        e('p',{style:{color:'#a09080',fontSize:'12px',marginTop:'7px'}},'Sperimentale e gratuita: prova a turno le cinque lingue sui testi preparati. Può perdere parole o lingua durante un cambio relatore. Usa le bandiere se la ricerca non riesce.')
-      ),
-      e('label',{style:{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',color:'#c8b89a',marginBottom:'10px'}},
-        e('input',{type:'checkbox',...(autoAssist?{checked:''}:{}),onChange:event=>{autoAssist=event.target.checked;candidateLang=null;candidateVotes=0;suggestedLanguage=null;message(autoAssist?'Suggerimenti sperimentali attivi. La scelta della lingua resta manuale.':'Suggerimenti disattivati.');}}),
-        'Suggerisci cambio lingua dai testi (sperimentale; non cambia nulla da solo)'
-      ),
-      suggestedLanguage&&autoAssist?e('div',{style:{padding:'12px',marginBottom:'10px',border:'1px solid #c8a96e',borderRadius:'10px'}},
-        e('p',{style:{fontSize:'13px',marginBottom:'8px',color:'#e8dcc8'}},'Il testo sembra in '+names[suggestedLanguage]+'. Confermare prima di cambiare lingua.'),
-        e('button',{type:'button',style:{...buttonStyle,background:'rgba(200,169,110,.22)'},onClick:()=>{try{changeSpeakerLanguage(suggestedLanguage);}catch(err){stop();message(err.message||String(err));}}},'Conferma '+names[suggestedLanguage]),
-        e('button',{type:'button',style:buttonStyle,onClick:()=>{suggestedLanguage=null;refresh();}},'Ignora')
-      ):null,
-      e('div',{style:{margin:'12px 0',padding:'12px',borderRadius:'10px',background:'rgba(255,255,255,.035)'}},
-        e('p',{style:{fontSize:'13px',color:'#c8a96e',marginBottom:'9px'}},'Cambio rapido relatore · un tocco, senza fermare e riavviare'),
-        e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
-          ...LANGS.map(lang=>e('button',{type:'button',style:{...buttonStyle,background:source===lang?'rgba(200,169,110,.25)':'transparent',borderColor:source===lang?'#e8c87a':'rgba(200,169,110,.4)',fontWeight:source===lang?'bold':'normal'},onClick:()=>{try{changeSpeakerLanguage(lang);}catch(err){stop();message(err.message||String(err));}}},({it:'🇮🇹',fr:'🇫🇷',es:'🇪🇸',en:'🇺🇸',pt:'🇵🇹'})[lang]+' '+names[lang]))
-        ),
-        e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'9px'}},'Modalità assistita gratuita: scegli la bandiera quando cambia la lingua. Non è un riconoscimento automatico della lingua.')
-      ),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore (cambio con riavvio automatico): ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Attiva una condivisione per iniziare.'),
+      e('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap'}},
+        e('button',{type:'button',style:{...buttonStyle,background:'#c8a96e',color:'#111',fontWeight:'bold'},onClick:action(()=>valid(getState().readingFollow,active())?startExperimentalScan():prepare())},'🎙️ AVVIA ASCOLTO AUTOMATICO (PROVA)'),
+        btn('⏹ FERMA ASCOLTO',stop)),
+      e('p',{style:{color:'#a09080',fontSize:'12px',marginTop:'8px'}},'Ricerca sperimentale nelle cinque lingue. Non serve scegliere la lingua durante la prova; potrebbero esserci ritardi nei cambi di relatore.'),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
-      valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
-      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'Cambio lingua semplificato: seleziona la nuova lingua, il microfono riparte da solo se era già attivo. Il riconoscimento automatico della lingua non è ancora disponibile. Le coppie vedono i passaggi sottolineati tramite QR.'));
+      valid(r,share)?e('p',{style:{color:'#a09080',fontSize:'12px'}},'Passaggio '+(Math.max(-1,r.index)+1)+' di '+r.blocks.length):null,
+      fallback,
+      e('div',{style:{marginTop:'12px'}},btn('⚙ Prepara passaggi (solo se necessario)',prepare))
+    );
   }
   let lastScroll='';
   function body(share,lang,content){
