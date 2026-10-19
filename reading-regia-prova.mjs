@@ -32,7 +32,14 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),now=snap.data();
       if(now?.activeShareId!==share.id||now?.readingFollow?.session!==r.session)throw Error('Condivisione cambiata.');
-      if(command==='next'){
+      if(command==='manual' || command==='resume' || command==='pause'){
+        if(command==='manual') tx.update(ref,{readingRemote:{session:r.session,command:'pause',id:crypto.randomUUID(),manual:true}});
+        else tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID(),manual:command==='pause'?now.readingRemote?.manual===true:false}});
+      }else if(command==='manual-forward' || command==='manual-back'){
+        const delta=command==='manual-forward'?1:-1;
+        const bounded=Math.max(0,Math.min(r.blocks.length-1,(now.readingFollow.index||0)+delta));
+        tx.update(ref,{readingFollow:{...now.readingFollow,index:bounded,revision:(now.readingFollow.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
+      }else if(command==='next'){
         const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+1];
         if(!next)throw Error('Non ci sono altre condivisioni in programma.');
         const blocks=next.readingBlocks;
@@ -40,9 +47,9 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         if(!ok)throw Error('Prima prepara i passaggi della prossima condivisione.');
         const nextSession=crypto.randomUUID();
         tx.update(ref,{displayMode:'one',activeShareId:next.id,readingFollow:{shareId:next.id,session:nextSession,blocks,index:0,revision:0},readingRemote:{previousSession:r.session,session:nextSession,command,id:crypto.randomUUID()}});
-      }else tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID()}});
+      }else throw Error('Comando sconosciuto.');
     });
-    message(command==='pause'?'⏸ Comando pausa inviato al computer.':command==='resume'?'▶ Comando ripresa inviato al computer.':'▶ Avanzamento alla prossima condivisione inviato.');
+    message('Comando inviato: '+command+'. Verifica sul computer.');
   }
   const action=fn=>async()=>{try{await fn();}catch(err){stop();message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
@@ -83,10 +90,28 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Manuale indietro',()=>remoteCommand('manual-back')),btn('Manuale avanti →',()=>remoteCommand('manual-forward')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
+  }
+  function remotePanel(){
+    const share=active(),record=getState().readingFollow;
+    const btn=(label,command)=>e('button',{style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'17px',background:'#232339'},onClick:action(()=>remoteCommand(command))},label);
+    return e('div',{style:{display:'grid',gap:'12px'}},
+      e('h3',{style:{color:'#c8a96e'}} ,'📱 Regia remota'),
+      e('p',{style:{color:'#a09080',fontSize:'13px',lineHeight:'1.6'}},'Il microfono resta sul computer. Prima autorizzalo e avvia la lettura sul computer. Il cellulare non usa il proprio microfono.'),
+      e('p',{style:{color:'#c8a96e',fontSize:'14px'}},share?'Condivisione: '+(share.translations?.it?.title||''):'Nessuna condivisione attiva'),
+      btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),btn('⏭ PROSSIMA CONDIVISIONE','next'),
+      e('div',{style:{border:'1px solid #a66',borderRadius:'14px',padding:'13px',display:'grid',gap:'9px'}},
+        e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
+        btn('ATTIVA MODALITÀ MANUALE','manual'),
+        btn('← INDIETRO','manual-back'),btn('AVANTI →','manual-forward'),
+        e('p',{style:{fontSize:'12px',color:'#a09080'}},'Per tornare alla lettura automatica premi RIPRENDI. Il computer deve avere il microfono già attivo.')
+      ),
+      e('p',{id:'reading-status',style:{fontSize:'13px',color:'#c8a96e'}},status),
+      record?e('p',{style:{fontSize:'12px',color:'#a09080'}},'Passaggio '+(record.index+1)+' di '+record.blocks.length):null
+    );
   }
   let lastScroll='';
   function body(share,lang,content){
@@ -97,5 +122,5 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return root;
   }
   window.addEventListener('pagehide',stop);
-  return {panel,body,sync,stop};
+  return {panel,remotePanel,body,sync,stop};
 }
