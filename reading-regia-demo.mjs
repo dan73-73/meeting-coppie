@@ -49,7 +49,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         tx.update(ref,{displayMode:'one',activeShareId:next.id,readingFollow:{shareId:next.id,session:nextSession,blocks,index:0,revision:0},readingRemote:{previousSession:r.session,session:nextSession,command,id:crypto.randomUUID()}});
       }else throw Error('Comando sconosciuto.');
     });
-    message('Comando inviato: '+command+'. Verifica sul computer.');
+    message(command==='manual-forward'||command==='manual-back'?'Punto aggiornato su Firebase: controlla il testo evidenziato.':'Comando '+command+' inviato. In attesa della conferma dal computer.');
   }
   const action=fn=>async()=>{try{await fn();}catch(err){stop();message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
@@ -102,7 +102,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const row=(label,value)=>e('div',{style:{border:'1px solid #625536',borderRadius:'12px',padding:'14px',whiteSpace:'pre-line'}},
       e('p',{style:{fontSize:'12px',color:'#c8a96e',marginBottom:'6px'}},label),
       e('strong',{style:{fontSize:'16px',lineHeight:'1.5'}},value));
-    const btn=(label,command,disabled=false)=>e('button',{disabled:disabled?'':null,style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'16px',background:'#232339',opacity:disabled?.45:1},onClick:action(()=>remoteCommand(command))},label);
+    const btn=(label,command,disabled=false)=>e('button',{...(disabled?{disabled:''}:{}),style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'16px',background:'#232339',opacity:disabled?.45:1},onClick:action(()=>remoteCommand(command))},label);
     return e('div',{style:{display:'grid',gap:'12px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'19px'}},'📱 Regia · computer e cellulare'),
       e('p',{style:{color:'#a09080',fontSize:'13px'}},'Microfono sul computer. Stessi comandi da computer e cellulare.'),
