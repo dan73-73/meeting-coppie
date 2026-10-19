@@ -21,7 +21,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function usableBlocks(share){
     if(!share)return null;
     const ok=blocks=>Array.isArray(blocks)&&blocks.length>0&&LANGS.every(l=>blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));
-    if(ok(share.readingBlocks))return share.readingBlocks;
+    if(ok(share.readingBlocks)&&!(share.readingBlocks.length===1&&(share.translations?.it?.body||'').length>260))return share.readingBlocks;
     try{const p=suggestBlocks(share.translations||{});if(ok(p.blocks))return p.blocks;}catch(e){}
     return null;
   }
@@ -97,7 +97,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
-    dialog?.remove();const current=getState().readingFollow;const cached={shareId:share.id,blocks:share.readingBlocks};const proposal=valid(current,share)?{blocks:current.blocks,mode:'saved'}:valid(cached,share)?{blocks:cached.blocks,mode:'saved'}:suggestBlocks(share.translations||{});
+    dialog?.remove();const current=getState().readingFollow;const cached={shareId:share.id,blocks:share.readingBlocks};const stored=valid(current,share)?current:valid(cached,share)?cached:null;const proposal=stored?.blocks?.length>1||((share.translations?.it?.body||'').length<=260&&stored)?{blocks:stored.blocks,mode:'saved'}:suggestBlocks(share.translations||{});
     let lanes=Object.fromEntries(LANGS.map(l=>[l,proposal.blocks.map(b=>b[l])]));let confirmed=proposal.mode==='saved';
     const overlay=e('div',{style:{position:'fixed',inset:'0',background:'rgba(0,0,0,.85)',zIndex:'100',overflow:'auto',padding:'20px'}});
     const box=e('div',{style:{maxWidth:'1100px',margin:'auto',padding:'24px',background:'#171725',border:'1px solid #c8a96e',borderRadius:'16px'}});
