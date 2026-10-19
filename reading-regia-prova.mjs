@@ -13,7 +13,12 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   function sync(){
     const s=getState(),share=active();
-    if(running&&(!isAdmin()||getView()!=='admin'||!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
+    if(running&&(!isAdmin()||getView()!=='admin')){stop();return;}
+    if(running&&s.readingRemote?.command==='next'&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
+      session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';
+      message('▶ Condivisione successiva · microfono computer ancora attivo.');return;
+    }
+    if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
     const cmd=s.readingRemote;
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
@@ -27,9 +32,17 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),now=snap.data();
       if(now?.activeShareId!==share.id||now?.readingFollow?.session!==r.session)throw Error('Condivisione cambiata.');
-      tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID()}});
+      if(command==='next'){
+        const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+1];
+        if(!next)throw Error('Non ci sono altre condivisioni in programma.');
+        const blocks=next.readingBlocks;
+        const ok=Array.isArray(blocks)&&blocks.length>0&&LANGS.every(l=>blocks.map(b=>b[l]||'').join('')===(next.translations?.[l]?.body||''));
+        if(!ok)throw Error('Prima prepara i passaggi della prossima condivisione.');
+        const nextSession=crypto.randomUUID();
+        tx.update(ref,{displayMode:'one',activeShareId:next.id,readingFollow:{shareId:next.id,session:nextSession,blocks,index:0,revision:0},readingRemote:{previousSession:r.session,session:nextSession,command,id:crypto.randomUUID()}});
+      }else tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID()}});
     });
-    message(command==='pause'?'⏸ Comando pausa inviato al computer.':'▶ Comando ripresa inviato al computer.');
+    message(command==='pause'?'⏸ Comando pausa inviato al computer.':command==='resume'?'▶ Comando ripresa inviato al computer.':'▶ Avanzamento alla prossima condivisione inviato.');
   }
   const action=fn=>async()=>{try{await fn();}catch(err){stop();message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
@@ -70,7 +83,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
