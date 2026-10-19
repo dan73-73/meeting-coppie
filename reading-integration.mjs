@@ -15,6 +15,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function speakerLang(){
     const share=active();if(!share)return null;
     if(locales[share.speakerLanguage])return share.speakerLanguage;
+    for(const value of [share.sourceLanguage,share.originalLanguage,share.language,share.spokenLanguage])if(locales[value])return value;
     // Riconosce soltanto indicazioni esplicite nel testo originale, mai la lingua delle traduzioni.
     const header=[share.sourceLanguage,share.originalLanguage,share.language,share.spokenLanguage,share.notes,share.translations?.it?.title].filter(Boolean).join(' ');
     const exact={italiano:'it',italiana:'it',italian:'it',francese:'fr',french:'fr',français:'fr',francais:'fr',spagnolo:'es',spagnola:'es',spanish:'es',español:'es',inglese:'en',english:'en',portoghese:'pt',portuguese:'pt',português:'pt'};
@@ -30,7 +31,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       acknowledge(s.readingRemote.id,remotePaused?'manuale':'automatico');message('▶ Condivisione cambiata · '+(remotePaused?'guida manuale attiva.':'microfono computer ancora attivo.'));return;
     }
     if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
-    if(running&&!setSpeakerLanguage()){remotePaused=true;pending=null;message('⚠ Lingua del relatore non impostata: lettura automatica sospesa. Impostala nella condivisione.');}
+    if(running&&speakerLang())setSpeakerLanguage();
     const cmd=s.readingRemote;
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
@@ -74,7 +75,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
   async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||remotePaused||!isAdmin()||getState().readingRemote?.command==='pause')return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision&&s.readingRemote?.command!=='pause')tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
   function start(){
-    const lang=speakerLang();if(!lang||!locales[lang])throw Error('Prima indica la lingua parlata dal relatore nella scheda della condivisione.');source=lang;
+    const lang=speakerLang();if(lang&&locales[lang])source=lang;
     const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
     stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
