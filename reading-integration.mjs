@@ -12,14 +12,17 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
+  function speakerLang(){return active()?.speakerLanguage||null;}
+  function setSpeakerLanguage(){const code=speakerLang();if(!code||!locales[code])return false;if(source===code)return true;source=code;tail='';pending=null;if(running&&recognition){const old=recognition;recognition=null;old.onend=null;old.abort();clearTimeout(restart);const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;const nr=recognition=new Recognition();nr.lang=locales[source];nr.continuous=true;nr.interimResults=true;wireRecognition(nr);try{nr.start();}catch(err){stop();message('Riavvio microfono non riuscito: '+err.message);}}return true;}
   function sync(){
     const s=getState(),share=active();
     if(running&&(!isAdmin()||getView()!=='admin')){stop();return;}
     if(running&&(s.readingRemote?.command==='next'||s.readingRemote?.command==='previous')&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
-      session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';
+      session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';setSpeakerLanguage();
       acknowledge(s.readingRemote.id,remotePaused?'manuale':'automatico');message('▶ Condivisione cambiata · '+(remotePaused?'guida manuale attiva.':'microfono computer ancora attivo.'));return;
     }
     if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
+    if(running)setSpeakerLanguage();
     const cmd=s.readingRemote;
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
@@ -63,9 +66,13 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
   async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||remotePaused||!isAdmin()||getState().readingRemote?.command==='pause')return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision&&s.readingRemote?.command!=='pause')tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
   function start(){
+    const lang=speakerLang();if(!lang||!locales[lang])throw Error('Prima indica la lingua parlata dal relatore nella scheda della condivisione.');source=lang;
     const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
     stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
+    wireRecognition(r);
+  }
+  function wireRecognition(r){
     r.onstart=()=>message('Microfono attivo · Relatore: '+names[source]);
     r.onresult=event=>{if(remotePaused||getState().readingRemote?.command==='pause')return;const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
     r.onerror=event=>{if(event.error==='no-speech')return;stop();message(event.error==='not-allowed'?'Microfono non autorizzato. Consenti il microfono a questa pagina e premi Avvia lettura.':'Microfono interrotto ('+event.error+'). Puoi usare Precedente e Successivo.');};
