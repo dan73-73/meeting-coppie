@@ -22,7 +22,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const cmd=s.readingRemote;
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
-      if(cmd.command==='pause'){remotePaused=true;pending=null;message('⏸ Lettura in pausa dal tablet · microfono autorizzato sul computer.');}
+      if(cmd.command==='pause'){remotePaused=true;pending=null;tail='';message(cmd.manual?'🆘 Modalità manuale attiva · usa AVANTI e INDIETRO.':'⏸ Lettura in pausa dal cellulare.');}
       if(cmd.command==='resume'){remotePaused=false;message('▶ Lettura ripresa dal tablet · microfono del computer attivo.');}
     }
   }
@@ -37,8 +37,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         else tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID(),manual:command==='pause'?now.readingRemote?.manual===true:false}});
       }else if(command==='manual-forward' || command==='manual-back'){
         const delta=command==='manual-forward'?1:-1;
-        const bounded=Math.max(0,Math.min(r.blocks.length-1,(now.readingFollow.index||0)+delta));
-        tx.update(ref,{readingFollow:{...now.readingFollow,index:bounded,revision:(now.readingFollow.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
+        const activeRecord=now.readingFollow;const bounded=Math.max(0,Math.min(activeRecord.blocks.length-1,(activeRecord.index??0)+delta));
+        tx.update(ref,{readingFollow:{...activeRecord,index:bounded,revision:(activeRecord.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
       }else if(command==='next'){
         const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+1];
         if(!next)throw Error('Non ci sono altre condivisioni in programma.');
@@ -107,10 +107,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA MODALITÀ MANUALE','manual'),
         btn('← INDIETRO','manual-back'),btn('AVANTI →','manual-forward'),
-        e('p',{style:{fontSize:'12px',color:'#a09080'}},'Per tornare alla lettura automatica premi RIPRENDI. Il computer deve avere il microfono già attivo.')
+        e('p',{style:{fontSize:'12px',color:'#a09080'}},'AVANTI / INDIETRO spostano il punto evidenziato dentro lo stesso testo. PROSSIMA CONDIVISIONE cambia coppia. Per tornare alla voce premi RIPRENDI.')
       ),
       e('p',{id:'reading-status',style:{fontSize:'13px',color:'#c8a96e'}},status),
-      record?e('p',{style:{fontSize:'12px',color:'#a09080'}},'Passaggio '+(record.index+1)+' di '+record.blocks.length):null
+      record?e('p',{style:{fontSize:'14px',color:'#e8c87a'}},'Punto evidenziato: '+((record.index??0)+1)+' di '+record.blocks.length):null
     );
   }
   let lastScroll='';
