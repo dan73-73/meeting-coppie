@@ -6,12 +6,31 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'};
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let recognition=null,running=false,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
+  let recognition=null,running=false,remotePaused=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
-  function stop(){running=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
+  function stop(){running=false;remotePaused=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
-  function sync(){const s=getState(),share=active();if(running&&(!isAdmin()||getView()!=='admin'||!valid(s.readingFollow,share)||s.readingFollow.session!==session))stop();}
+  function sync(){
+    const s=getState(),share=active();
+    if(running&&(!isAdmin()||getView()!=='admin'||!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
+    const cmd=s.readingRemote;
+    if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
+      lastRemoteCommand=cmd.id;
+      if(cmd.command==='pause'){remotePaused=true;pending=null;message('⏸ Lettura in pausa dal tablet · microfono autorizzato sul computer.');}
+      if(cmd.command==='resume'){remotePaused=false;message('▶ Lettura ripresa dal tablet · microfono del computer attivo.');}
+    }
+  }
+  async function remoteCommand(command){
+    const s=getState(),share=active(),r=s.readingFollow;
+    if(!isAdmin()||!valid(r,share))throw Error('Attiva e prepara prima una condivisione.');
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref),now=snap.data();
+      if(now?.activeShareId!==share.id||now?.readingFollow?.session!==r.session)throw Error('Condivisione cambiata.');
+      tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID()}});
+    });
+    message(command==='pause'?'⏸ Comando pausa inviato al computer.':'▶ Comando ripresa inviato al computer.');
+  }
   const action=fn=>async()=>{try{await fn();}catch(err){stop();message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
     const s=getState(),share=active(),record=s.readingFollow;if(!isAdmin()||!valid(record,share))throw Error('Attiva e prepara prima una condivisione.');
@@ -19,13 +38,13 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     await runTransaction(db,async tx=>{const snap=await tx.get(ref),now=snap.data(),r=now?.readingFollow;if(now?.activeShareId!==share.id||r?.session!==record.session)throw Error('La condivisione attiva è cambiata.');tx.update(ref,{readingFollow:{...r,index:bounded,revision:(r.revision||0)+(manual?1:0)}});});
   }
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
-  async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||!isAdmin())return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision)tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
+  async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||remotePaused||!isAdmin())return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision)tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
   function start(){
     const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
-    stop();session=record.session;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
+    stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
     r.onstart=()=>message('Microfono attivo · Relatore: '+names[source]);
-    r.onresult=event=>{const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
+    r.onresult=event=>{if(remotePaused)return;const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
     r.onerror=event=>{if(event.error==='no-speech')return;stop();message(event.error==='not-allowed'?'Microfono non autorizzato. Consenti il microfono a questa pagina e premi Avvia lettura.':'Microfono interrotto ('+event.error+'). Puoi usare Precedente e Successivo.');};
     r.onend=()=>{if(running)restart=setTimeout(()=>{try{r.start();}catch(err){stop();message(err.message);}},350);};
     try{r.start();}catch(err){stop();throw err;}
@@ -51,10 +70,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'6px'}},r.index>=0?'Passaggio '+(r.index+1)+' di '+r.blocks.length:'Sottolineatura sospesa.'):null,
-      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'Il relatore usa il microfono di Chrome sul computer. Le coppie usano il QR abituale e vedono il passaggio sottolineato. Il riconoscimento vocale del browser può usare un servizio online.'));
+      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
   }
   let lastScroll='';
   function body(share,lang,content){
