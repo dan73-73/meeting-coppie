@@ -396,13 +396,27 @@ function renderAdmin() {
   const header = e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 20px", background:"rgba(200,169,110,0.05)", borderBottom:"1px solid rgba(200,169,110,0.12)", flexWrap:"wrap"} },
     e("span", { style:{fontSize:"17px", color:"#c8a96e", fontWeight:"600", whiteSpace:"nowrap"} }, "💞 Meeting Admin"),
     e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
-      tabBtn("list","📋 Programma"), tabBtn("add","➕ Nuova"), tabBtn("import","📥 Importa"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
+      tabBtn("list","📋 Programma"), tabBtn("remote","📱 Telecomando"), tabBtn("add","➕ Nuova"), tabBtn("import","📥 Importa"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
     ),
     e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:async()=>{await signOut(auth); adminAuth=false; render();} }, "Esci")
   );
 
   let bodyContent;
 
+  // ── REGIA CELLULARE ──
+  if (adminTab === "remote") {
+    const current = (appState.shares||[]).find(x=>x.id===appState.activeShareId);
+    bodyContent = e("div",{style:{maxWidth:"440px",margin:"0 auto",display:"grid",gap:"16px"}},
+      e("h2",{style:{color:"#c8a96e",textAlign:"center",fontSize:"22px"}},"📱 Telecomando lettura"),
+      e("p",{style:{textAlign:"center",lineHeight:"1.6",color:"#a09080",fontSize:"14px"}},"Il microfono rimane sul computer. Apri questa regia sul cellulare per controllare la lettura."),
+      e("div",{style:{padding:"18px",borderRadius:"16px",background:"#1a1a2e",border:"1px solid #625536"}},
+        e("p",{style:{fontSize:"12px",color:"#c8a96e"}},"CONDIVISIONE ATTIVA"),
+        e("h3",{style:{fontSize:"19px",lineHeight:"1.5",marginTop:"8px"}} ,current?.translations?.it?.title||"Nessuna condivisione attiva")
+      ),
+      reading.panel()
+    );
+  }
+  else
   // ── TAB: PROGRAMMA ──
   if (adminTab === "list") {
     const modeBar = e("div", { style:{padding:"14px 16px", borderRadius:"12px", background:"rgba(200,169,110,0.06)", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"20px"} },
