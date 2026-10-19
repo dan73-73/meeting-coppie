@@ -1,4 +1,4 @@
-import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs';
+import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=short-5928fc88';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
