@@ -12,7 +12,15 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
-  function speakerLang(){return active()?.speakerLanguage||null;}
+  function speakerLang(){
+    const share=active();if(!share)return null;
+    if(locales[share.speakerLanguage])return share.speakerLanguage;
+    // Riconosce soltanto indicazioni esplicite nel testo originale, mai la lingua delle traduzioni.
+    const header=[share.sourceLanguage,share.originalLanguage,share.language,share.spokenLanguage,share.notes,share.translations?.it?.title].filter(Boolean).join(' ');
+    const exact={italiano:'it',italiana:'it',italian:'it',francese:'fr',french:'fr',français:'fr',francais:'fr',spagnolo:'es',spagnola:'es',spanish:'es',español:'es',inglese:'en',english:'en',portoghese:'pt',portuguese:'pt',português:'pt'};
+    const matches=[...header.toLowerCase().matchAll(/(?:lingua(?: parlata| originale| relatore)?|language|langue|idioma)\s*[:=\-]\s*(italiano|italiana|italian|francese|french|français|francais|spagnolo|spagnola|spanish|español|inglese|english|portoghese|portuguese|português)/g)].map(x=>exact[x[1]]);
+    return matches.length&&matches.every(v=>v===matches[0])?matches[0]:null;
+  }
   function setSpeakerLanguage(){const code=speakerLang();if(!code||!locales[code])return false;if(source===code)return true;source=code;tail='';pending=null;if(running&&recognition){const old=recognition;recognition=null;old.onend=null;old.abort();clearTimeout(restart);const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;const nr=recognition=new Recognition();nr.lang=locales[source];nr.continuous=true;nr.interimResults=true;wireRecognition(nr);try{nr.start();}catch(err){stop();message('Riavvio microfono non riuscito: '+err.message);}}return true;}
   function sync(){
     const s=getState(),share=active();
