@@ -104,7 +104,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function remotePanel(){
     const state=getState(),share=active(),record=state.readingFollow,shares=state.shares||[];
     const cmd=state.readingRemote,ack=state.readingRemoteAck;
-    const confirmation=cmd?.id===ack?.id?('✅ ESEGUITO DAL COMPUTER · '+(ack.mode||'')):(cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
+    const confirmation=cmd?.id && ack?.id===cmd.id ? ('✅ ESEGUITO DAL COMPUTER · '+(ack?.mode||'')) : (cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
     const idx=shares.findIndex(x=>x.id===share?.id),previous=shares[idx-1],next=shares[idx+1];
     const summary=x=>x?((x.time||'Orario non indicato')+' · '+(x.coupleName||'Relatore da indicare')+'\n'+(x.translations?.it?.title||'Senza titolo')):'Nessuna';
     const row=(label,value)=>e('div',{style:{border:'1px solid #625536',borderRadius:'12px',padding:'14px',whiteSpace:'pre-line'}},
