@@ -5,6 +5,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const ref=doc(db,'state','main');
   const names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'};
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
+  function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
   let recognition=null,running=false,remotePaused=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
@@ -31,6 +32,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.previousSession===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;session=follow?.session||null;pending=null;tail='';
       remotePaused=!valid(follow,share)||remotePaused;
+      const lang=spokenLanguage(share);
+      if(lang&&lang!==source){source=lang;tail='';const old=recognition;if(old){old.onend=null;old.abort();}clearTimeout(restart);recognition=null;const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;if(Rec){const nr=recognition=new Rec();nr.lang=locales[source];nr.continuous=true;nr.interimResults=true;nr.onstart=()=>message('Microfono attivo · '+names[source]);nr.onresult=event=>{if(remotePaused)return;const live=getState().readingFollow;if(!valid(live,active()))return;for(let i=event.resultIndex;i<event.results.length;i++){const t=event.results[i][0].transcript,idx=locatePassage(t,live.blocks,source,Math.max(0,live.index));if(idx!==null)queue(idx);}};nr.onerror=()=>{remotePaused=true;message('Riconoscimento interrotto. Usa la guida manuale.');};nr.onend=()=>{if(running)restart=setTimeout(()=>{try{nr.start();}catch(e){message('Riavvio microfono non riuscito.');}},350);};try{nr.start();}catch(e){remotePaused=true;message('Microfono da riavviare dal computer.');}}}
       acknowledge(cmd.id,remotePaused?'manuale · condivisione cambiata':'automatico · condivisione cambiata');
       message(remotePaused?'Condivisione cambiata · microfono in attesa di testo preparato o RIPRENDI.':'Condivisione cambiata · microfono attivo.');
       return;
@@ -82,11 +85,12 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
   async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||remotePaused||!isAdmin()||getState().readingRemote?.command==='pause')return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision&&s.readingRemote?.command!=='pause')tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
   function start(){
+    const detected=spokenLanguage(active());if(detected)source=detected;
     const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
     stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
     r.onstart=()=>message('Microfono attivo · Relatore: '+names[source]);
-    r.onresult=event=>{if(remotePaused||getState().readingRemote?.command==='pause')return;const live=getState().readingFollow;if(!valid(live,active())){stop();return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
+    r.onresult=event=>{if(remotePaused||getState().readingRemote?.command==='pause')return;const live=getState().readingFollow;if(!valid(live,active())){remotePaused=true;return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
     r.onerror=event=>{if(event.error==='no-speech')return;stop();message(event.error==='not-allowed'?'Microfono non autorizzato. Consenti il microfono a questa pagina e premi Avvia lettura.':'Microfono interrotto ('+event.error+'). Puoi usare Precedente e Successivo.');};
     r.onend=()=>{if(running)restart=setTimeout(()=>{try{r.start();}catch(err){stop();message(err.message);}},350);};
     try{r.start();}catch(err){stop();throw err;}
