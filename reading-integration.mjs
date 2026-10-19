@@ -157,7 +157,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function body(share,lang,content){
     const r=getState().readingFollow;const style={fontSize:'16px',lineHeight:'1.8',color:'#c8b89a',marginBottom:'16px',whiteSpace:'pre-wrap'};
     if(!valid(r,share))return e('p',{style},content?.body||'');
-    const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index?{background:'rgba(200,169,110,.18)',textDecoration:'underline',textDecorationColor:'#e8c87a',textDecorationThickness:'3px',textUnderlineOffset:'5px'}:{}},b[lang])));
+    const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(200,169,110,.12)',borderLeft:'3px solid #e8c87a',paddingLeft:'5px'}:{}},b[lang])));
     const key=r.session+'|'+r.index+'|'+lang+'|'+getView();if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
