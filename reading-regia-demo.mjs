@@ -15,9 +15,9 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function sync(){
     const s=getState(),share=active();
     if(running&&(!isAdmin()||getView()!=='admin')){stop();return;}
-    if(running&&s.readingRemote?.command==='next'&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
+    if(running&&(s.readingRemote?.command==='next'||s.readingRemote?.command==='previous')&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
       session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';
-      remotePaused=false;acknowledge(s.readingRemote.id,'automatico');message('▶ Condivisione successiva · microfono computer ancora attivo.');return;
+      remotePaused=false;acknowledge(s.readingRemote.id,'automatico');message('▶ Condivisione cambiata · microfono computer ancora attivo.');return;
     }
     if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
     const cmd=s.readingRemote;
@@ -42,9 +42,9 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         const activeRecord=now.readingFollow;const bounded=Math.max(0,Math.min(activeRecord.blocks.length-1,(activeRecord.index??0)+delta));
         if(bounded===(activeRecord.index??0))throw Error(delta>0?'Sei già all’ultimo paragrafo.':'Sei già al primo paragrafo.');
         tx.update(ref,{readingFollow:{...activeRecord,index:bounded,revision:(activeRecord.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
-      }else if(command==='next'){
-        const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+1];
-        if(!next)throw Error('Non ci sono altre condivisioni in programma.');
+      }else if(command==='next'||command==='previous'){
+        const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+(command==='next'?1:-1)];
+        if(!next)throw Error(command==='next'?'Non ci sono altre condivisioni in programma.':'Non ci sono condivisioni precedenti in programma.');
         const blocks=next.readingBlocks;
         const ok=Array.isArray(blocks)&&blocks.length>0&&LANGS.every(l=>blocks.map(b=>b[l]||'').join('')===(next.translations?.[l]?.body||''));
         if(!ok)throw Error('Prima prepara i passaggi della prossima condivisione.');
@@ -93,7 +93,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Manuale indietro',()=>remoteCommand('manual-back')),btn('Manuale avanti →',()=>remoteCommand('manual-forward')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>{stop();return position((getState().readingFollow?.index||0)-1,true);}),btn('Successivo →',()=>{stop();return position((getState().readingFollow?.index??-1)+1,true);})),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
@@ -125,8 +125,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA GUIDA MANUALE','manual'),
         row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.it||''):'Nessun testo preparato'),
-        btn('⬅ PARAGRAFO PRECEDENTE','manual-back',!record || (record.index??0)===0),btn('PARAGRAFO SUCCESSIVO ➡','manual-forward',!record || (record.index??0)>=record.blocks.length-1),
-        e('p',{style:{fontSize:'12px',color:'#a09080'}},'AVANTI e INDIETRO evidenziano i passaggi del testo, non cambiano condivisione. Quando sei all’ultimo passaggio, AVANTI non può avanzare. Per tornare al microfono premi RIPRENDI.')),
+        btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),btn('CONDIVISIONE SUCCESSIVA ➡','next',!next),
+        e('p',{style:{fontSize:'12px',color:'#a09080'}},'EMERGENZA: questi comandi cambiano l’intera condivisione, inclusi relatore, orario, titolo e testo nelle cinque lingue. Per tornare al microfono premi RIPRENDI.')),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px'}},status));
   }
   let lastScroll='';
