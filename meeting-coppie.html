@@ -853,7 +853,15 @@ function render() {
     }, "💞 Vista Coppie")
   );
   app.appendChild(demoBar);
-  app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
+  try {
+    app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
+  } catch (err) {
+    console.error("Errore visualizzazione Meeting Coppie:", err);
+    const panel = document.createElement("div");
+    panel.style.cssText = "max-width:750px;margin:32px auto;padding:24px;border:1px solid #b77;border-radius:14px;color:#ffcfba;background:#211421;line-height:1.6;white-space:pre-wrap";
+    panel.textContent = "Errore di visualizzazione: " + (err?.message || String(err)) + "\n\nLe condivisioni salvate non sono state eliminate. Comunica questo messaggio per correggere il problema.";
+    app.appendChild(panel);
+  }
 }
 
 onAuthStateChanged(auth, user => {
