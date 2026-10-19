@@ -23,7 +23,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
       if(cmd.command==='pause'){remotePaused=true;pending=null;tail='';message(cmd.manual?'🆘 Modalità manuale attiva · usa AVANTI e INDIETRO.':'⏸ Lettura in pausa dal cellulare.');}
-      if(cmd.command==='resume'){remotePaused=false;message('▶ Lettura ripresa dal tablet · microfono del computer attivo.');}
+      if(cmd.command==='resume'){remotePaused=false;message('▶ Lettura automatica ripresa sul computer.');}
     }
   }
   async function remoteCommand(command){
@@ -102,21 +102,21 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const row=(label,value)=>e('div',{style:{border:'1px solid #625536',borderRadius:'12px',padding:'14px',whiteSpace:'pre-line'}},
       e('p',{style:{fontSize:'12px',color:'#c8a96e',marginBottom:'6px'}},label),
       e('strong',{style:{fontSize:'16px',lineHeight:'1.5'}},value));
-    const btn=(label,command)=>e('button',{style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'16px',background:'#232339'},onClick:action(()=>remoteCommand(command))},label);
+    const btn=(label,command,disabled=false)=>e('button',{disabled:disabled?'':null,style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'16px',background:'#232339',opacity:disabled?.45:1},onClick:action(()=>remoteCommand(command))},label);
     return e('div',{style:{display:'grid',gap:'12px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'19px'}},'📱 Regia · computer e cellulare'),
       e('p',{style:{color:'#a09080',fontSize:'13px'}},'Microfono sul computer. Stessi comandi da computer e cellulare.'),
       row('⬅ PRECEDENTE',summary(previous)),
       row('🔴 IN CORSO · '+(idx+1)+' di '+shares.length,summary(share)),
       row('⏭ SUCCESSIVA',summary(next)),
-      record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length):null,
+      record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.it||'')):null,
       btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),
       next?btn('⏭ PASSA A · '+(next.coupleName||next.translations?.it?.title||'successiva'),'next'):null,
       e('div',{style:{border:'1px solid #b77',borderRadius:'14px',padding:'14px',display:'grid',gap:'10px'}},
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA GUIDA MANUALE','manual'),
-        btn('⬅ PARAGRAFO PRECEDENTE','manual-back'),btn('PARAGRAFO SUCCESSIVO ➡','manual-forward'),
-        e('p',{style:{fontSize:'12px',color:'#a09080'}},'Per tornare al microfono premi RIPRENDI. AVANTI e INDIETRO cambiano paragrafo, non coppia.')),
+        btn('⬅ PARAGRAFO PRECEDENTE','manual-back',!record || (record.index??0)===0),btn('PARAGRAFO SUCCESSIVO ➡','manual-forward',!record || (record.index??0)>=record.blocks.length-1),
+        e('p',{style:{fontSize:'12px',color:'#a09080'}},'AVANTI e INDIETRO evidenziano i passaggi del testo, non cambiano condivisione. Quando sei all’ultimo passaggio, AVANTI non può avanzare. Per tornare al microfono premi RIPRENDI.')),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px'}},status));
   }
   let lastScroll='';
