@@ -40,6 +40,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       }else if(command==='manual-forward' || command==='manual-back'){
         const delta=command==='manual-forward'?1:-1;
         const activeRecord=now.readingFollow;const bounded=Math.max(0,Math.min(activeRecord.blocks.length-1,(activeRecord.index??0)+delta));
+        if(bounded===(activeRecord.index??0))throw Error(delta>0?'Sei già all’ultimo paragrafo.':'Sei già al primo paragrafo.');
         tx.update(ref,{readingFollow:{...activeRecord,index:bounded,revision:(activeRecord.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
       }else if(command==='next'){
         const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+1];
@@ -123,6 +124,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('div',{style:{border:'1px solid #b77',borderRadius:'14px',padding:'14px',display:'grid',gap:'10px'}},
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA GUIDA MANUALE','manual'),
+        row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.it||''):'Nessun testo preparato'),
         btn('⬅ PARAGRAFO PRECEDENTE','manual-back',!record || (record.index??0)===0),btn('PARAGRAFO SUCCESSIVO ➡','manual-forward',!record || (record.index??0)>=record.blocks.length-1),
         e('p',{style:{fontSize:'12px',color:'#a09080'}},'AVANTI e INDIETRO evidenziano i passaggi del testo, non cambiano condivisione. Quando sei all’ultimo passaggio, AVANTI non può avanzare. Per tornare al microfono premi RIPRENDI.')),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px'}},status));
@@ -132,7 +134,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const r=getState().readingFollow;const style={fontSize:'16px',lineHeight:'1.8',color:'#c8b89a',marginBottom:'16px',whiteSpace:'pre-wrap'};
     if(!valid(r,share))return e('p',{style},content?.body||'');
     const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index?{background:'rgba(200,169,110,.18)',textDecoration:'underline',textDecorationColor:'#e8c87a',textDecorationThickness:'3px',textUnderlineOffset:'5px'}:{}},b[lang])));
-    const key=r.session+'|'+r.index+'|'+lang;if(getView()==='couple'&&key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'}));}
+    const key=r.session+'|'+r.index+'|'+lang+'|'+getView();if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
   window.addEventListener('pagehide',stop);
