@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test microfono · Meeting Coppie</title>
+<style>body{font:17px system-ui;background:#111225;color:#f2e8d3;max-width:720px;margin:0 auto;padding:24px}button,select{padding:14px;margin:6px;border-radius:10px;background:#c8a96e;color:#171725;border:0;font:inherit}button{cursor:pointer}section{padding:18px;border:1px solid #a38a55;border-radius:14px;margin:20px 0}#status{font-weight:700;color:#e8c87a}small{color:#d5c6a9}</style></head>
+<body><h1>🎙️ Prova indipendente del microfono</h1>
+<p>Questo test NON è collegato a Firebase e NON modifica le condivisioni o il QR Code.</p>
+<section><label>Lingua: <select id="lang"><option value="it-IT">Italiano</option><option value="fr-FR">Francese</option><option value="es-ES">Spagnolo</option><option value="en-US">Inglese</option><option value="pt-PT">Portoghese</option></select></label>
+<div><button id="start">▶ Avvia microfono</button><button id="next">⏭ Cambia condivisione</button><button id="pause">⏸ Pausa/Riprendi</button><button id="stop">⏹ Ferma</button></div>
+<p id="status" role="status">Pronto per la prova</p>
+<p id="active">Condivisione di prova: 1</p>
+<p id="last">Testo riconosciuto: —</p>
+<p id="counters">Avvii: 0 · Cambi condivisione: 0 · Frasi riconosciute: 0</p></section>
+<small>Premi Avvia una sola volta, parla e poi premi Cambia condivisione più volte senza fermarti. Se il browser interrompe la voce, il motore prova a riattivarla. Il browser potrebbe richiedere nuovamente il permesso.</small>
+<script type="module">
+import {createMicrophone} from './microphone-engine.mjs?v=test-168d1415';
+let share=1,changes=0,heard=0,starts=0,paused=false;
+const byId=id=>document.getElementById(id);
+const update=()=>{byId('active').textContent='Condivisione di prova: '+share;byId('counters').textContent='Avvii manuali: '+starts+' · Cambi condivisione: '+changes+' · Frasi riconosciute: '+heard;};
+const mic=createMicrophone({Recognition:window.SpeechRecognition||window.webkitSpeechRecognition,onStatus:s=>byId('status').textContent=s,onTranscript:event=>{for(let i=event.resultIndex;i<event.results.length;i++){byId('last').textContent='Testo riconosciuto: '+event.results[i][0].transcript;if(event.results[i].isFinal)heard++;}update();}});
+byId('start').onclick=()=>{try{mic.start(byId('lang').value);starts++;paused=false;update();}catch(e){byId('status').textContent=e.message;}};
+byId('next').onclick=()=>{share++;changes++;update();byId('status').textContent=mic.active?'Condivisione cambiata · ascolto mantenuto':'Condivisione cambiata · microfono non avviato';};
+byId('pause').onclick=()=>{paused=!paused;mic.pause(paused);};
+byId('stop').onclick=()=>mic.stop();
+byId('lang').onchange=()=>mic.setLanguage(byId('lang').value);
+</script></body></html>
