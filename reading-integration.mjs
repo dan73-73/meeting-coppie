@@ -22,7 +22,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       acknowledge(s.readingRemote.id,remotePaused?'manuale':'automatico');message('▶ Condivisione cambiata · '+(remotePaused?'guida manuale attiva.':'microfono computer ancora attivo.'));return;
     }
     if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
-    if(running)setSpeakerLanguage();
+    if(running&&!setSpeakerLanguage()){remotePaused=true;pending=null;message('⚠ Lingua del relatore non impostata: lettura automatica sospesa. Impostala nella condivisione.');}
     const cmd=s.readingRemote;
     if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
