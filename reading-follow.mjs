@@ -16,13 +16,36 @@ export function splitText(text, lang, mode='sentence') {
   if (globalThis.Intl?.Segmenter) return [...new Intl.Segmenter(lang,{granularity:'sentence'}).segment(text)].map(x=>x.segment);
   return [text];
 }
-export function suggestBlocks(translations) {
-  for (const mode of ['paragraph','sentence']) {
-    const parts = Object.fromEntries(LANGS.map(l=>[l,splitText(translations[l]?.body || '',l,mode)]));
-    const count=parts.it.length;
-    if (count>1 && LANGS.every(l=>parts[l].length===count)) return {mode,blocks:parts.it.map((_,i)=>Object.fromEntries(LANGS.map(l=>[l,parts[l][i]])))};
+// Divide each translation into corresponding small, readable sections.
+// Slices preserve every character; boundaries prefer spaces, never alter the text.
+export function shortSections(text, count) {
+  const str=String(text||'');
+  if(!str.length)return Array(count).fill('');
+  const pieces=[],min=0;
+  let start=0;
+  for(let i=1;i<count;i++){
+    const remaining=count-i,ideal=Math.round(str.length*i/count);
+    let best=-1,score=Infinity;
+    const lower=Math.max(start+1,ideal-36),upper=Math.min(str.length-remaining,ideal+36);
+    for(let p=lower;p<=upper;p++){
+      if(!/\\s/u.test(str[p-1]||''))continue;
+      const value=Math.abs(p-ideal);
+      if(value<score){best=p;score=value;}
+    }
+    const cut=best>=0?best:Math.min(str.length-remaining,Math.max(start+1,ideal));
+    pieces.push(str.slice(start,cut));start=cut;
   }
-  return {mode:'manual',blocks:[Object.fromEntries(LANGS.map(l=>[l,translations[l]?.body || '']))]};
+  pieces.push(str.slice(start));return pieces;
+}
+export function suggestBlocks(translations) {
+  const original=translations.it?.body||'';
+  const n=Math.max(1,Math.min(200,Math.round(original.length/130)));
+  const lengths=LANGS.map(l=>(translations[l]?.body||'').length);
+  if(n>=2&&LANGS.every((_,i)=>lengths[i]>=n*12)){
+    const parts=Object.fromEntries(LANGS.map(l=>[l,shortSections(translations[l]?.body||'',n)]));
+    return {mode:'short',blocks:Array.from({length:n},(_,i)=>Object.fromEntries(LANGS.map(l=>[l,parts[l][i]])))};
+  }
+  return {mode:'manual',blocks:[Object.fromEntries(LANGS.map(l=>[l,translations[l]?.body||'']))]};
 }
 export function validateBlocks(blocks,translations) {
   if (!Array.isArray(blocks) || !blocks.length) throw new Error('Aggiungi almeno un passaggio.');
