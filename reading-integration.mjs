@@ -29,7 +29,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const state=getState(),share=active(),cmd=state.readingRemote,follow=state.readingFollow;
     if(!running)return;
     if(!isAdmin()||getView()!=='admin'){stop();return;}
-    if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.previousSession===session&&cmd.id!==lastRemoteCommand){
+    if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;session=follow?.session||null;pending=null;tail='';
       remotePaused=!valid(follow,share)||remotePaused;
       const lang=spokenLanguage(share);
