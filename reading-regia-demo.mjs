@@ -96,21 +96,30 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
   }
   function remotePanel(){
-    const share=active(),record=getState().readingFollow;
+    const state=getState(),share=active(),record=state.readingFollow;
+    const shares=state.shares||[],idx=shares.findIndex(x=>x.id===share?.id),next=shares[idx+1],previous=shares[idx-1];
+    const title=x=>x?.translations?.it?.title||'Nessuna';
     const btn=(label,command)=>e('button',{style:{...buttonStyle,width:'100%',fontSize:'17px',padding:'17px',background:'#232339'},onClick:action(()=>remoteCommand(command))},label);
+    const line=(label,value)=>e('div',{style:{padding:'10px 12px',background:'#202032',borderRadius:'10px'}},
+      e('p',{style:{fontSize:'11px',color:'#c8a96e',marginBottom:'4px'}},label),
+      e('strong',{style:{fontSize:'16px',lineHeight:'1.4'}},value));
     return e('div',{style:{display:'grid',gap:'12px'}},
       e('h3',{style:{color:'#c8a96e'}} ,'📱 Regia remota'),
-      e('p',{style:{color:'#a09080',fontSize:'13px',lineHeight:'1.6'}},'Il microfono resta sul computer. Prima autorizzalo e avvia la lettura sul computer. Il cellulare non usa il proprio microfono.'),
-      e('p',{style:{color:'#c8a96e',fontSize:'14px'}},share?'Condivisione: '+(share.translations?.it?.title||''):'Nessuna condivisione attiva'),
-      btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),btn('⏭ PROSSIMA CONDIVISIONE','next'),
+      e('p',{style:{color:'#a09080',fontSize:'13px',lineHeight:'1.6'}},'Il microfono rimane sul computer. Il cellulare controlla solo la regia.'),
+      line('🔴 CONDIVISIONE ATTIVA · '+(idx>=0?idx+1:'—')+' di '+shares.length,title(share)),
+      line('⏭ PROSSIMA CONDIVISIONE',title(next)),
+      line('↩ PRECEDENTE NELL’ELENCO',title(previous)),
+      record?line('📍 POSIZIONE NEL TESTO',String((record.index??0)+1)+' di '+record.blocks.length+' passaggi'):null,
+      btn('⏸ PAUSA · '+title(share),'pause'),
+      btn('▶ RIPRENDI · '+title(share),'resume'),
+      next?btn('⏭ APRI LA PROSSIMA · '+title(next),'next'):e('p',{style:{color:'#a09080'}},'Ultima condivisione in elenco'),
       e('div',{style:{border:'1px solid #a66',borderRadius:'14px',padding:'13px',display:'grid',gap:'9px'}},
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA MODALITÀ MANUALE','manual'),
-        btn('← INDIETRO','manual-back'),btn('AVANTI →','manual-forward'),
-        e('p',{style:{fontSize:'12px',color:'#a09080'}},'AVANTI / INDIETRO spostano il punto evidenziato dentro lo stesso testo. PROSSIMA CONDIVISIONE cambia coppia. Per tornare alla voce premi RIPRENDI.')
+        btn('← PARAGRAFO PRECEDENTE','manual-back'),btn('PARAGRAFO SUCCESSIVO →','manual-forward'),
+        e('p',{style:{fontSize:'12px',color:'#a09080'}},'I comandi manuali spostano il punto evidenziato nella condivisione attiva, non cambiano coppia. Per tornare alla voce premi RIPRENDI.')
       ),
-      e('p',{id:'reading-status',style:{fontSize:'13px',color:'#c8a96e'}},status),
-      record?e('p',{style:{fontSize:'14px',color:'#e8c87a'}},'Punto evidenziato: '+((record.index??0)+1)+' di '+record.blocks.length):null
+      e('p',{id:'reading-status',style:{fontSize:'13px',color:'#c8a96e'}},status)
     );
   }
   let lastScroll='';
