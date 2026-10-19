@@ -12,47 +12,66 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
+  function orderedShares(state){
+    const sections=[...(state.sections||[])].sort((a,b)=>(a.order||0)-(b.order||0));
+    const rank=new Map(sections.map((x,i)=>[x.id,i]));
+    return (state.shares||[]).map((x,i)=>({x,i})).sort((a,b)=>(rank.get(a.x.sectionId)??999)-(rank.get(b.x.sectionId)??999)||a.i-b.i).map(v=>v.x);
+  }
+  function usableBlocks(share){
+    if(!share)return null;
+    const ok=blocks=>Array.isArray(blocks)&&blocks.length>0&&LANGS.every(l=>blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));
+    if(ok(share.readingBlocks))return share.readingBlocks;
+    try{const p=suggestBlocks(share.translations||{});if(ok(p.blocks))return p.blocks;}catch(e){}
+    return null;
+  }
   function sync(){
-    const s=getState(),share=active();
-    if(running&&(!isAdmin()||getView()!=='admin')){stop();return;}
-    if(running&&(s.readingRemote?.command==='next'||s.readingRemote?.command==='previous')&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
-      session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';
-      acknowledge(s.readingRemote.id,remotePaused?'manuale':'automatico');message('▶ Condivisione cambiata · '+(remotePaused?'guida manuale attiva.':'microfono computer ancora attivo.'));return;
+    const state=getState(),share=active(),cmd=state.readingRemote,follow=state.readingFollow;
+    if(!running)return;
+    if(!isAdmin()||getView()!=='admin'){stop();return;}
+    if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.previousSession===session&&cmd.id!==lastRemoteCommand){
+      lastRemoteCommand=cmd.id;session=follow?.session||null;pending=null;tail='';
+      remotePaused=!valid(follow,share)||remotePaused;
+      acknowledge(cmd.id,remotePaused?'manuale · condivisione cambiata':'automatico · condivisione cambiata');
+      message(remotePaused?'Condivisione cambiata · microfono in attesa di testo preparato o RIPRENDI.':'Condivisione cambiata · microfono attivo.');
+      return;
     }
-    if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
-    const cmd=s.readingRemote;
-    if(running&&cmd&&cmd.session===session&&cmd.id!==lastRemoteCommand){
+    if(!valid(follow,share)){remotePaused=true;pending=null;return;}
+    if(follow.session!==session){session=follow.session;pending=null;tail='';}
+    if(cmd&&cmd.id!==lastRemoteCommand&&cmd.session===session){
       lastRemoteCommand=cmd.id;
-      if(cmd.command==='pause'){remotePaused=true;pending=null;tail='';message(cmd.manual?'🆘 Modalità manuale attiva · usa AVANTI e INDIETRO.':'⏸ Lettura in pausa dal cellulare.');}
-      if(cmd.command==='resume'){remotePaused=false;message('▶ Lettura automatica ripresa sul computer.');}
-      if(cmd.command==='pause'||cmd.command==='resume')acknowledge(cmd.id,remotePaused?(cmd.manual?'manuale':'pausa'):'automatico');
+      if(cmd.command==='pause'){remotePaused=true;pending=null;tail='';}
+      if(cmd.command==='resume'){remotePaused=false;pending=null;tail='';}
+      if(cmd.command==='pause'||cmd.command==='resume')acknowledge(cmd.id,remotePaused?'pausa':'automatico');
+      message(remotePaused?'⏸ Lettura in pausa.':'▶ Lettura automatica ripresa.');
     }
   }
   async function remoteCommand(command){
-    const s=getState(),share=active(),r=s.readingFollow;
-    if(!isAdmin()||!valid(r,share))throw Error('Attiva e prepara prima una condivisione.');
+    const state=getState(),share=active();
+    if(!isAdmin()||!share)throw Error('Seleziona una condivisione attiva.');
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),now=snap.data();
-      if(now?.activeShareId!==share.id||now?.readingFollow?.session!==r.session)throw Error('Condivisione cambiata.');
-      if(command==='manual' || command==='resume' || command==='pause'){
-        if(command==='manual') tx.update(ref,{readingRemote:{session:r.session,command:'pause',id:crypto.randomUUID(),manual:true}});
-        else tx.update(ref,{readingRemote:{session:r.session,command,id:crypto.randomUUID(),manual:command==='pause'?now.readingRemote?.manual===true:false}});
-      }else if(command==='manual-forward' || command==='manual-back'){
-        const delta=command==='manual-forward'?1:-1;
-        const activeRecord=now.readingFollow;const bounded=Math.max(0,Math.min(activeRecord.blocks.length-1,(activeRecord.index??0)+delta));
-        if(bounded===(activeRecord.index??0))throw Error(delta>0?'Sei già all’ultimo paragrafo.':'Sei già al primo paragrafo.');
-        tx.update(ref,{readingFollow:{...activeRecord,index:bounded,revision:(activeRecord.revision||0)+1},readingRemote:{session:r.session,command:'pause',manual:true,id:crypto.randomUUID()}});
-      }else if(command==='next'||command==='previous'){
-        const shares=now.shares||[],index=shares.findIndex(x=>x.id===share.id),next=shares[index+(command==='next'?1:-1)];
-        if(!next)throw Error(command==='next'?'Non ci sono altre condivisioni in programma.':'Non ci sono condivisioni precedenti in programma.');
-        const blocks=next.readingBlocks;
-        const ok=Array.isArray(blocks)&&blocks.length>0&&LANGS.every(l=>blocks.map(b=>b[l]||'').join('')===(next.translations?.[l]?.body||''));
-        if(!ok)throw Error('Prima prepara i passaggi della prossima condivisione.');
-        const nextSession=crypto.randomUUID();
-        tx.update(ref,{displayMode:'one',activeShareId:next.id,readingFollow:{shareId:next.id,session:nextSession,blocks,index:0,revision:0},readingRemote:{previousSession:r.session,session:nextSession,command,id:crypto.randomUUID()}});
+      if(!now||now.activeShareId!==share.id)throw Error('La condivisione attiva è cambiata.');
+      const current=now.readingFollow,sessionId=current?.session||null;
+      if(command==='next'||command==='previous'){
+        const items=orderedShares(now),index=items.findIndex(x=>x.id===share.id);
+        const next=items[index+(command==='next'?1:-1)];
+        if(!next)throw Error('Non ci sono altre condivisioni in questa direzione.');
+        const blocks=usableBlocks(next),nextSession=crypto.randomUUID(),id=crypto.randomUUID();
+        tx.update(ref,{displayMode:'one',activeShareId:next.id,
+          readingFollow:blocks?{shareId:next.id,session:nextSession,blocks,index:0,revision:0}:null,
+          readingRemote:{previousSession:sessionId,session:blocks?nextSession:null,command,id,manual:!blocks}});
+      }else if(command==='pause'||command==='resume'||command==='manual'){
+        if(command==='resume'&&!valid(current,share))throw Error('Prepara prima i passaggi di questa condivisione per il microfono.');
+        tx.update(ref,{readingRemote:{session:sessionId,command:command==='manual'?'pause':command,manual:command==='manual',id:crypto.randomUUID()}});
+      }else if(command==='manual-forward'||command==='manual-back'){
+        if(!valid(current,share))throw Error('Passaggi non preparati.');
+        const delta=command==='manual-forward'?1:-1,index=Math.max(0,Math.min(current.blocks.length-1,(current.index??0)+delta));
+        if(index===(current.index??0))throw Error('Sei già al primo o ultimo passaggio.');
+        tx.update(ref,{readingFollow:{...current,index,revision:(current.revision||0)+1},
+          readingRemote:{session:sessionId,command:'pause',manual:true,id:crypto.randomUUID()}});
       }else throw Error('Comando sconosciuto.');
     });
-    message('Comando registrato su Firebase. Controlla la conferma sul telecomando.');
+    message('Comando registrato.');
   }
   const action=fn=>async()=>{try{await fn();}catch(err){message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
@@ -102,7 +121,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
   }
   function remotePanel(){
-    const state=getState(),share=active(),record=state.readingFollow,shares=state.shares||[];
+    const state=getState(),share=active(),record=state.readingFollow,shares=orderedShares(state);
     const cmd=state.readingRemote,ack=state.readingRemoteAck;
     const confirmation=cmd?.id && ack?.id===cmd.id ? ('✅ ESEGUITO DAL COMPUTER · '+(ack?.mode||'')) : (cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
     const idx=shares.findIndex(x=>x.id===share?.id),previous=shares[idx-1],next=shares[idx+1];
