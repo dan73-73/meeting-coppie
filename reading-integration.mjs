@@ -7,9 +7,9 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let recognition=null,running=false,remotePaused=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
+  let recognition=null,running=false,remotePaused=false,requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
-  function stop(){running=false;remotePaused=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
+  function stop(){running=false;remotePaused=false;requestedPause=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;if(recognition){recognition.onend=null;recognition.abort();recognition=null;}message('Microfono fermo.');}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
@@ -31,7 +31,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||getView()!=='admin'){stop();return;}
     if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;session=follow?.session||null;pending=null;tail='';
-      remotePaused=!valid(follow,share)||remotePaused;
+      remotePaused=!valid(follow,share)||requestedPause;
       const lang=spokenLanguage(share);
       if(lang&&lang!==source){source=lang;tail='';const old=recognition;if(old){old.onend=null;old.abort();}clearTimeout(restart);recognition=null;const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;if(Rec){const nr=recognition=new Rec();nr.lang=locales[source];nr.continuous=true;nr.interimResults=true;nr.onstart=()=>message('Microfono attivo · '+names[source]);nr.onresult=event=>{if(remotePaused)return;const live=getState().readingFollow;if(!valid(live,active()))return;for(let i=event.resultIndex;i<event.results.length;i++){const t=event.results[i][0].transcript,idx=locatePassage(t,live.blocks,source,Math.max(0,live.index));if(idx!==null)queue(idx);}};nr.onerror=()=>{remotePaused=true;message('Riconoscimento interrotto. Usa la guida manuale.');};nr.onend=()=>{if(running)restart=setTimeout(()=>{try{nr.start();}catch(e){message('Riavvio microfono non riuscito.');}},350);};try{nr.start();}catch(e){remotePaused=true;message('Microfono da riavviare dal computer.');}}}
       acknowledge(cmd.id,remotePaused?'manuale · condivisione cambiata':'automatico · condivisione cambiata');
@@ -42,8 +42,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(follow.session!==session){session=follow.session;pending=null;tail='';}
     if(cmd&&cmd.id!==lastRemoteCommand&&cmd.session===session){
       lastRemoteCommand=cmd.id;
-      if(cmd.command==='pause'){remotePaused=true;pending=null;tail='';}
-      if(cmd.command==='resume'){remotePaused=false;pending=null;tail='';}
+      if(cmd.command==='pause'){requestedPause=true;remotePaused=true;pending=null;tail='';}
+      if(cmd.command==='resume'){requestedPause=false;remotePaused=false;pending=null;tail='';}
       if(cmd.command==='pause'||cmd.command==='resume')acknowledge(cmd.id,remotePaused?'pausa':'automatico');
       message(remotePaused?'⏸ Lettura in pausa.':'▶ Lettura automatica ripresa.');
     }
