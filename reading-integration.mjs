@@ -29,24 +29,25 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const state=getState(),share=active(),cmd=state.readingRemote,follow=state.readingFollow;
     if(!running)return;
     if(!isAdmin()||getView()!=='admin'){stop();return;}
-    if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.id!==lastRemoteCommand){
-      lastRemoteCommand=cmd.id;session=follow?.session||null;pending=null;tail='';
-      remotePaused=!valid(follow,share)||requestedPause;
-      const lang=spokenLanguage(share);
-      if(lang&&lang!==source){source=lang;tail='';const old=recognition;if(old){old.onend=null;old.abort();}clearTimeout(restart);recognition=null;const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;if(Rec){const nr=recognition=new Rec();nr.lang=locales[source];nr.continuous=true;nr.interimResults=true;nr.onstart=()=>message('Microfono attivo · '+names[source]);nr.onresult=event=>{if(remotePaused)return;const live=getState().readingFollow;if(!valid(live,active()))return;for(let i=event.resultIndex;i<event.results.length;i++){const t=event.results[i][0].transcript,idx=locatePassage(t,live.blocks,source,Math.max(0,live.index));if(idx!==null)queue(idx);}};nr.onerror=()=>{remotePaused=true;message('Riconoscimento interrotto. Usa la guida manuale.');};nr.onend=()=>{if(running)restart=setTimeout(()=>{try{nr.start();}catch(e){message('Riavvio microfono non riuscito.');}},350);};try{nr.start();}catch(e){remotePaused=true;message('Microfono da riavviare dal computer.');}}}
-      acknowledge(cmd.id,remotePaused?'manuale · condivisione cambiata':'automatico · condivisione cambiata');
-      message(remotePaused?'Condivisione cambiata · microfono in attesa di testo preparato o RIPRENDI.':'Condivisione cambiata · microfono attivo.');
-      return;
+    const changed=follow?.session!==session || (cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.id!==lastRemoteCommand);
+    if(changed){
+      session=follow?.session||null;pending=null;tail='';
+      remotePaused=requestedPause||!valid(follow,share);
+      const target=spokenLanguage(share);
+      if(target&&target!==source){source=target;restartRecognition();}
+      if(cmd&&(cmd.command==='next'||cmd.command==='previous')&&cmd.id!==lastRemoteCommand){
+        lastRemoteCommand=cmd.id;
+        acknowledge(cmd.id,remotePaused?'testo non pronto o pausa':'microfono attivo');
+      }
+      message(remotePaused?'Condivisione cambiata: riconoscimento in attesa.':'Condivisione cambiata: microfono in ascolto.');
     }
     if(!valid(follow,share)){remotePaused=true;pending=null;return;}
-    if(!requestedPause&&remotePaused&&cmd?.command!=='pause')remotePaused=false;
-    if(follow.session!==session){session=follow.session;pending=null;tail='';}
+    if(!requestedPause)remotePaused=false;
     if(cmd&&cmd.id!==lastRemoteCommand&&cmd.session===session){
       lastRemoteCommand=cmd.id;
       if(cmd.command==='pause'){requestedPause=true;remotePaused=true;pending=null;tail='';}
       if(cmd.command==='resume'){requestedPause=false;remotePaused=false;pending=null;tail='';}
       if(cmd.command==='pause'||cmd.command==='resume')acknowledge(cmd.id,remotePaused?'pausa':'automatico');
-      message(remotePaused?'⏸ Lettura in pausa.':'▶ Lettura automatica ripresa.');
     }
   }
   async function remoteCommand(command){
@@ -85,16 +86,59 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
   async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!running||remotePaused||!isAdmin())return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision )tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){stop();message('Sincronizzazione interrotta: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
+  function installRecognition(){
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Recognition)throw Error('Questo browser non supporta il riconoscimento vocale. Usa Chrome sul computer.');
+    const r=new Recognition();recognition=r;
+    r.lang=locales[source];r.continuous=true;r.interimResults=true;
+    r.onstart=()=>{if(r===recognition&&running)message('Microfono in ascolto · '+names[source]);};
+    r.onresult=event=>{
+      if(r!==recognition||!running||remotePaused)return;
+      const live=getState().readingFollow;
+      if(!valid(live,active())){remotePaused=true;return;}
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        const spoken=event.results[i][0].transcript,combined=(tail+' '+spoken).trim();
+        let index=locatePassage(spoken,live.blocks,source,Math.max(0,live.index));
+        if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));
+        if(index!==null)queue(index);
+        if(event.results[i].isFinal)tail=combined.split(/\\s+/).slice(-12).join(' ');
+      }
+    };
+    r.onerror=event=>{
+      if(r!==recognition||!running)return;
+      if(event.error==='not-allowed'||event.error==='service-not-allowed'){
+        stop();message('Microfono non autorizzato. Consenti l’accesso e premi Avvia lettura.');return;
+      }
+      if(event.error==='no-speech'||event.error==='aborted')return;
+      message('Riconoscimento temporaneamente interrotto ('+event.error+'). Riprovo automaticamente.');
+    };
+    r.onend=()=>{
+      if(r!==recognition||!running)return;
+      clearTimeout(restart);
+      restart=setTimeout(()=>{
+        if(!running||recognition!==r)return;
+        installRecognition();
+        try{recognition.start();}catch(err){message('Riavvio microfono non riuscito: '+err.message);}
+      },600);
+    };
+    return r;
+  }
+  function restartRecognition(){
+    if(!running)return;
+    clearTimeout(restart);
+    const old=recognition;
+    if(old){old.onend=null;old.onerror=null;old.onresult=null;recognition=null;try{old.abort();}catch(e){}}
+    const newer=installRecognition();
+    try{newer.start();}catch(err){message('Cambio lingua: premi Avvia lettura se il browser non autorizza il riavvio.');}
+  }
   function start(){
     const detected=spokenLanguage(active());if(detected)source=detected;
-    const record=getState().readingFollow;if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
-    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Recognition)throw Error('Apri l’app in Chrome sul computer del relatore: questo browser non supporta il riconoscimento vocale.');
-    stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;tail='';running=true;const r=recognition=new Recognition();r.lang=locales[source];r.continuous=true;r.interimResults=true;
-    r.onstart=()=>message('Microfono attivo · Relatore: '+names[source]);
-    r.onresult=event=>{if(remotePaused)return;const live=getState().readingFollow;if(!valid(live,active())){remotePaused=true;return;}for(let i=event.resultIndex;i<event.results.length;i++){const text=event.results[i][0].transcript,combined=(tail+' '+text).trim();let index=locatePassage(text,live.blocks,source,Math.max(0,live.index));if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));if(index!==null)queue(index);if(event.results[i].isFinal)tail=combined.split(/\s+/).slice(-12).join(' ');message('Microfono attivo · '+text);}};
-    r.onerror=event=>{if(event.error==='no-speech')return;stop();message(event.error==='not-allowed'?'Microfono non autorizzato. Consenti il microfono a questa pagina e premi Avvia lettura.':'Microfono interrotto ('+event.error+'). Puoi usare Precedente e Successivo.');};
-    r.onend=()=>{if(running)restart=setTimeout(()=>{try{r.start();}catch(err){stop();message(err.message);}},350);};
-    try{r.start();}catch(err){stop();throw err;}
+    const record=getState().readingFollow;
+    if(!isAdmin()||!valid(record,active()))throw Error('Prepara i passaggi della condivisione attiva.');
+    stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
+    tail='';running=true;requestedPause=false;remotePaused=false;
+    try{installRecognition().start();}
+    catch(err){stop();throw err;}
   }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
