@@ -17,7 +17,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(running&&(!isAdmin()||getView()!=='admin')){stop();return;}
     if(running&&(s.readingRemote?.command==='next'||s.readingRemote?.command==='previous')&&s.readingRemote?.previousSession===session&&valid(s.readingFollow,share)){
       session=s.readingFollow.session;lastRemoteCommand=s.readingRemote.id;pending=null;tail='';
-      remotePaused=false;acknowledge(s.readingRemote.id,'automatico');message('▶ Condivisione cambiata · microfono computer ancora attivo.');return;
+      acknowledge(s.readingRemote.id,remotePaused?'manuale':'automatico');message('▶ Condivisione cambiata · '+(remotePaused?'guida manuale attiva.':'microfono computer ancora attivo.'));return;
     }
     if(running&&(!valid(s.readingFollow,share)||s.readingFollow.session!==session)){stop();return;}
     const cmd=s.readingRemote;
