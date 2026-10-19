@@ -10,7 +10,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
   let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
-  function stop(){running=false;remotePaused=false;requestedPause=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
+  function stop(){requestedPause=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
@@ -59,7 +59,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         acknowledge(cmd.id,cmd.command==='pause'?'pausa':'automatico');
       }
     }
-    mic.pause(requestedPause||!valid(follow,share));
+    const shouldPause=requestedPause||!valid(follow,share);
+    if(mic.paused!==shouldPause)mic.pause(shouldPause);
   }
   async function remoteCommand(command){
     const state=getState(),share=active();
