@@ -1,5 +1,5 @@
 import {createMicrophone} from './microphone-engine.mjs';
-import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=short-5928fc88';
+import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=match-06b7d2ea';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {

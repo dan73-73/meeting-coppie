@@ -28,7 +28,7 @@ export function shortSections(text, count) {
     let best=-1,score=Infinity;
     const lower=Math.max(start+1,ideal-36),upper=Math.min(str.length-remaining,ideal+36);
     for(let p=lower;p<=upper;p++){
-      if(!/\\s/u.test(str[p-1]||''))continue;
+      if(!/\s/u.test(str[p-1]||''))continue;
       const value=Math.abs(p-ideal);
       if(value<score){best=p;score=value;}
     }
@@ -74,9 +74,15 @@ export function scorePassage(spoken,text) {
   return best;
 }
 export function locatePassage(spoken,blocks,lang,current) {
-  if(words(spoken).length<4) return null;
-  const candidates=blocks.map((b,i)=>({i,score:scorePassage(spoken,b[lang])})).filter(x=>x.i>=Math.max(0,current) && x.i<=current+3).sort((a,b)=>b.score-a.score || a.i-b.i);
+  if(words(spoken).length<3||!Array.isArray(blocks)||!blocks.length)return null;
+  const from=Math.max(0,Math.min(current||0,blocks.length-1));
+  const candidates=[];
+  for(let i=from;i<Math.min(blocks.length,from+5);i++){
+    const value=scorePassage(spoken,blocks[i]?.[lang]||'');
+    candidates.push({i,value});
+  }
+  candidates.sort((a,b)=>b.value-a.value||a.i-b.i);
   const best=candidates[0];
-  if(!best || best.score<0.76 || (candidates[1] && best.score-candidates[1].score<0.15)) return null;
+  if(!best||best.value<0.58)return null;
   return best.i;
 }
