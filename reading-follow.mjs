@@ -28,7 +28,7 @@ export function shortSections(text, count) {
     let best=-1,score=Infinity;
     const lower=Math.max(start+1,ideal-36),upper=Math.min(str.length-remaining,ideal+36);
     for(let p=lower;p<=upper;p++){
-      if(!/\\s/u.test(str[p-1]||''))continue;
+      if(!/\s/u.test(str[p-1]||''))continue;
       const value=Math.abs(p-ideal);
       if(value<score){best=p;score=value;}
     }
