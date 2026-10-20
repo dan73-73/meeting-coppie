@@ -59,7 +59,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         acknowledge(cmd.id,cmd.command==='pause'?'pausa':'automatico');
       }
     }
-    const shouldPause=requestedPause||!valid(follow,share);
+    const shouldPause=requestedPause;
     if(mic.paused!==shouldPause)mic.pause(shouldPause);
   }
   async function remoteCommand(command){
