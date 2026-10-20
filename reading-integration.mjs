@@ -121,7 +121,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function panel(){
     const share=active(),r=getState().readingFollow;
-    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;stop();}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
+    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;if(mic.active){tail='';mic.setLanguage(locales[source]);}}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
     const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
