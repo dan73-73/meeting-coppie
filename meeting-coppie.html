@@ -331,6 +331,13 @@ function renderShareForm(sections, isLibrary) {
       e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px"} }, "Sezione del weekend"),
       sectionSel
     ) : null,
+    e("div", {style:{marginTop:"16px", padding:"12px",border:"1px solid rgba(200,169,110,.3)",borderRadius:"10px"}},
+      e("label", {style:{display:"block",marginBottom:"8px",color:"#e8c87a",fontSize:"14px"}}, "🎙️ Lingua parlata dal relatore"),
+      (()=>{const sel=e("select",{style:{width:"100%",padding:"10px",borderRadius:"8px",background:"#1a1a2e",color:"#e8dcc8",fontSize:"15px"},onChange:ev=>{form.speakerLanguage=ev.target.value;}});
+        for(const [code,label] of [["","Da impostare"],["it","Italiano"],["es","Español"],["fr","Français"],["en","English"],["pt","Português"]]){const opt=e("option",{value:code},label);if((form.speakerLanguage||"")===code)opt.selected=true;sel.append(opt);}
+        return sel;})(),
+      e("p",{style:{fontSize:"12px",color:"#a09080",marginTop:"8px"}},"Il microfono userà automaticamente questa lingua quando attivi la condivisione. Non cambia le lingue visualizzate dalle coppie.")
+    ),
     e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px", marginTop:"16px"} }, "URL immagine (opzionale)"),
     inp("https://…", form.imageUrl, v=>{ form.imageUrl=v; }),
     e("div", { style:{marginTop:"20px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.35)", background:"rgba(200,169,110,0.05)"} },
@@ -738,6 +745,7 @@ function openNewForm(sectionId) {
     coupleName: "",
     day: "",
     time: "",
+    speakerLanguage: "",
     translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
   };
   adminEditId = null;
@@ -751,6 +759,7 @@ function openEditForm(share) {
     coupleName: share.coupleName||"",
     day: share.day||"",
     time: share.time||"",
+    speakerLanguage: share.speakerLanguage||"",
     translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...share.translations }
   };
   adminEditId = share.id;
@@ -777,6 +786,7 @@ function openNewLibForm() {
     day: "",
     time: "",
     imageUrl: "",
+    speakerLanguage: "",
     translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
   };
   libEditId = null;
@@ -789,6 +799,7 @@ function openLibEditForm(item) {
     day: item.day||"",
     time: item.time||"",
     imageUrl: item.imageUrl||"",
+    speakerLanguage: item.speakerLanguage||"",
     translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...item.translations }
   };
   libEditId = item.id;
