@@ -134,6 +134,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       ):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
   }
+  let remoteFullTextOpen=false;
   function remotePanel(){
     const state=getState(),share=active(),record=state.readingFollow,shares=orderedShares(state);
     const cmd=state.readingRemote,ack=state.readingRemoteAck;
@@ -151,6 +152,12 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       row('⬅ PRECEDENTE',summary(previous)),
       row('🔴 IN CORSO · '+(idx+1)+' di '+shares.length,summary(share)),
       row('⏭ SUCCESSIVA',summary(next)),
+      e('button',{style:{...buttonStyle,width:'100%',padding:'14px',background:'rgba(200,169,110,.14)',fontWeight:'600'},onClick:()=>{remoteFullTextOpen=!remoteFullTextOpen;refresh();}},remoteFullTextOpen?'📖 Nascondi condivisione completa':'📖 Visualizza condivisione completa'),
+      remoteFullTextOpen&&share?e('div',{style:{background:'#141423',border:'1px solid #8f7747',borderRadius:'12px',padding:'16px',maxHeight:'62vh',overflowY:'auto',overscrollBehavior:'contain'}},
+        e('h3',{style:{color:'#e8c87a',fontSize:'17px',marginBottom:'12px'}},share.translations?.it?.title||'Condivisione in corso'),
+        e('div',{style:{fontSize:'15px',lineHeight:'1.85',color:'#f0e4cc',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},
+          ...(valid(record,share)?record.blocks.map((block,i)=>e('span',{style:i===record.index&&record.blocks.length>1?{background:'rgba(232,200,117,.34)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},block.it||'')):[e('span',{},share.translations?.it?.body||'Testo non disponibile')]))
+      ):null,
       record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.it||'')):null,
       btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),
       btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),
@@ -167,7 +174,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function body(share,lang,content){
     const r=getState().readingFollow;const style={fontSize:'16px',lineHeight:'1.8',color:'#c8b89a',marginBottom:'16px',whiteSpace:'pre-wrap'};
     if(!valid(r,share))return e('p',{style},content?.body||'');
-    const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(200,169,110,.12)',borderLeft:'3px solid #e8c87a',paddingLeft:'5px'}:{}},b[lang])));
+    const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang])));
     const key=r.session+'|'+r.index+'|'+lang+'|'+getView();if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
