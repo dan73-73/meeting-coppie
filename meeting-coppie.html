@@ -19,6 +19,7 @@ import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "h
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 import { createReadingIntegration } from './reading-integration.mjs?v=paragraph-align-e4dbc8';
+import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
@@ -50,6 +51,13 @@ const DEFAULT_STATE = {
 
 const LOGO_URL = "https://i.ibb.co/C368QQ9D/image.png";
 
+// Only pre-link passages automatically when every translation has the
+// same number of complete paragraphs. Never guess alignment by length.
+function alignedReadingBlocks(translations) {
+  const proposal = suggestBlocks(translations || {});
+  return proposal.mode === "paragraph" ? proposal.blocks : null;
+}
+
 async function saveState(state) {
   const ref = doc(firestore, "state", "main");
   await runTransaction(firestore, async tx => {
@@ -58,7 +66,10 @@ async function saveState(state) {
     const share = (state.shares || []).find(s => s.id === state.activeShareId);
     const validBlocks = blocks => Array.isArray(blocks) && blocks.length && ["it","en","fr","es","pt"].every(l => blocks.map(b=>b[l]||"").join("") === (share?.translations?.[l]?.body || ""));
     if ((state.displayMode || "one") !== "one" || !share) reading = null;
-    else if (reading?.shareId !== share.id || !validBlocks(reading?.blocks)) reading = validBlocks(share.readingBlocks) ? {shareId:share.id,session:crypto.randomUUID(),blocks:share.readingBlocks,index:0,revision:0} : null;
+    else if (reading?.shareId !== share.id || !validBlocks(reading?.blocks)) {
+      const blocks = validBlocks(share.readingBlocks) ? share.readingBlocks : alignedReadingBlocks(share.translations);
+      reading = validBlocks(blocks) ? {shareId:share.id,session:crypto.randomUUID(),blocks,index:0,revision:0} : null;
+    }
     tx.set(ref, {...state, readingFollow: reading});
   });
 }
@@ -548,8 +559,12 @@ function renderAdmin() {
           coupleName:String(item.coupleName||""),
           day:String(item.day||""),
           time:String(item.time||""),
+          speakerLanguage:["it","en","fr","es","pt"].includes(item.speakerLanguage) ? item.speakerLanguage : "",
           translations:Object.fromEntries(Object.keys(LANG_NAMES).map(code=>[code,{title:String(item.translations?.[code]?.title||""),body:String(item.translations?.[code]?.body||"")}]))
-        })).filter(item => item.translations.it.title || item.translations.it.body);
+        })).filter(item => item.translations.it.title || item.translations.it.body).map(item => ({
+          ...item,
+          readingBlocks:alignedReadingBlocks(item.translations)
+        }));
         if (!importItems.length) throw new Error("Non ho trovato testi italiani validi da importare.");
       } catch(err) { importError = err?.message || "File non valido."; }
       render();
@@ -558,6 +573,7 @@ function renderAdmin() {
     const previewRows = importItems.map((item, idx) => {
       const sec = (appState.sections||[]).find(s=>s.id===item.sectionId);
       const langs = Object.keys(LANG_FLAGS).filter(code => item.translations?.[code]?.title || item.translations?.[code]?.body).map(code=>LANG_FLAGS[code]).join(" ");
+      const alignment = item.readingBlocks ? " · ✅ "+item.readingBlocks.length+" passaggi sincronizzati" : " · ⚠️ Allineamento da verificare";
       return e("div", { style:{padding:"12px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
         e("div", { style:{display:"flex", justifyContent:"space-between", gap:"10px", flexWrap:"wrap"} },
           e("strong", { style:{color:"#e8dcc8"} }, (idx+1)+". "+(item.translations.it.title || "Senza titolo")),
@@ -567,7 +583,7 @@ function renderAdmin() {
           (sec ? sec.icon+" "+sec.label : item.sectionId) +
           (item.coupleName ? " · 👫 "+item.coupleName : "") +
           (item.day ? " · 📅 "+item.day : "") +
-          (item.time ? " · 🕐 "+item.time : "")
+          (item.time ? " · 🕐 "+item.time : "") + alignment
         )
       );
     });
@@ -586,7 +602,7 @@ function renderAdmin() {
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Carica un file JSON preparato per questa app. Prima del salvataggio vedrai l’anteprima. L’importazione aggiunge nuove condivisioni e non cancella quelle esistenti."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Carica un file JSON preparato per questa app. I passaggi nelle cinque lingue si sincronizzano automaticamente quando i paragrafi corrispondono; altrimenti viene mostrato un avviso. L’importazione aggiunge condivisioni e non cancella quelle esistenti."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
