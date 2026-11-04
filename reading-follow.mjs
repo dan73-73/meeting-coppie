@@ -38,6 +38,15 @@ export function shortSections(text, count) {
   pieces.push(str.slice(start));return pieces;
 }
 export function suggestBlocks(translations) {
+  // When all five translations have the same paragraph count, align by
+  // paragraph boundaries rather than by character position.
+  // Each slice includes its trailing blank line, preserving the exact
+  // original text for reading-follow validation.
+  const paragraphs=Object.fromEntries(LANGS.map(l=>[l,splitText(translations[l]?.body||'',l,'paragraph')]));
+  const paragraphCount=paragraphs.it.length;
+  if (paragraphCount>1 && LANGS.every(l=>paragraphs[l].length===paragraphCount && paragraphs[l].every(p=>p.trim()))) {
+    return {mode:'paragraph',blocks:Array.from({length:paragraphCount},(_,i)=>Object.fromEntries(LANGS.map(l=>[l,paragraphs[l][i]])))};
+  }
   const original=translations.it?.body||'';
   const n=Math.max(1,Math.min(200,Math.round(original.length/130)));
   const lengths=LANGS.map(l=>(translations[l]?.body||'').length);
