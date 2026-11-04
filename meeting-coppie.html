@@ -87,11 +87,11 @@ async function initState() {
 const LANG_NAMES = { it: "Italiano", en: "English", fr: "Français", es: "Español", pt: "Português" };
 const LANG_FLAGS = { it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", es: "🇪🇸", pt: "🇵🇹" };
 const UI_LABELS = {
-  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", welcome: "Oggi può nascere qualcosa di nuovo tra voi", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
-  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", welcome: "Today something new can be born between you", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
-  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", welcome: "Aujourd'hui quelque chose de nouveau peut naître entre vous", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
-  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Hoy puede nacer algo nuevo entre vosotros", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
-  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Hoje pode nascer algo novo entre vós", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
+  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", welcome: "Oltre la porta, il cammino", waitingSubtitle: "perché diventi un seme per il futuro non un semplice ricordo", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
+  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", welcome: "Beyond the door, the journey", waitingSubtitle: "so that it may become a seed for the future, not simply a memory", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
+  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", welcome: "Au-delà de la porte, le chemin", waitingSubtitle: "pour qu’il devienne une graine pour l’avenir, et pas seulement un souvenir", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
+  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Más allá de la puerta, el camino", waitingSubtitle: "para que se convierta en una semilla para el futuro y no en un simple recuerdo", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
+  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Para além da porta, o caminho", waitingSubtitle: "para que se torne uma semente para o futuro e não apenas uma recordação", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
 };
 const ADMIN_UID = "S80JhCm2aJUqLpCNgzbX8NTp5v03";
 
@@ -216,9 +216,13 @@ function renderCouple() {
   if (activeShares.length === 0) {
     body = e("div", { style:{textAlign:"center", padding:"20px 0"} },
       e("img", { src:LOGO_URL, style:{width:"100%", borderRadius:"12px", marginBottom:"24px", objectFit:"cover"} }),
-      e("div", { style:{fontSize:"42px", marginBottom:"12px"} }, "💞"),
-      e("p", { style:{color:"#c8a96e", fontSize:"19px", lineHeight:"1.7", fontStyle:"italic", marginBottom:"16px"} }, ui.welcome),
-      e("p", { style:{color:"#a09080", fontSize:"13px", lineHeight:"1.6"} }, ui.waiting)
+      // Decorative intertwined wedding bands are drawn locally, without any image service.
+      e("div", { "aria-label":"Due fedi nuziali", role:"img", style:{position:"relative",width:"96px",height:"52px",margin:"8px auto 8px"} },
+        e("span", { style:{position:"absolute",left:"10px",top:"7px",width:"55px",height:"29px",border:"7px solid #e7bf61",borderRadius:"50%",transform:"rotate(-24deg)",background:"transparent",boxShadow:"inset 1px 2px 3px rgba(60,31,4,.65), 1px 3px 5px rgba(0,0,0,.45), 0 0 2px #ffdf89",boxSizing:"border-box"} }),
+        e("span", { style:{position:"absolute",left:"39px",top:"16px",width:"51px",height:"27px",border:"7px solid #cfa044",borderTopColor:"#ffe293",borderRightColor:"#e6ba5b",borderRadius:"50%",transform:"rotate(13deg)",background:"transparent",boxShadow:"inset 1px 2px 3px rgba(60,31,4,.65), 1px 3px 5px rgba(0,0,0,.45)",boxSizing:"border-box"} })
+      ),
+      e("h2", { style:{color:"#e2bc73",fontFamily:"'Palatino Linotype','Book Antiqua',Georgia,serif",fontSize:"clamp(25px, 6vw, 38px)",fontStyle:"italic",fontWeight:"400",lineHeight:"1.35",marginBottom:"18px",letterSpacing:"-.7px",textShadow:"0 1px 2px rgba(0,0,0,.3)"} }, ui.welcome),
+      e("p", { style:{color:"#c7af96",fontFamily:"'Palatino Linotype','Book Antiqua',Georgia,serif",fontSize:"clamp(16px, 3.6vw, 21px)",fontStyle:"italic",lineHeight:"1.65",marginBottom:"10px"} }, ui.waitingSubtitle)
     );
   } else if (activeShares.length === 1) {
     const share = activeShares[0];
