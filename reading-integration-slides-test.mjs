@@ -1,5 +1,5 @@
 import {createMicrophone} from './microphone-engine.mjs';
-import {slideAt} from './reading-slides-test.mjs';
+import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
 import {LANGS,suggestBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
