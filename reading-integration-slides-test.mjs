@@ -1,6 +1,6 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs';
-import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import {LANGS,suggestBlocks,shortSections,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
@@ -106,6 +106,56 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
     tail='';requestedPause=false;mic.start(locales[source]);
   }
+  async function shortenHighlightedPassages(){
+    if(!isAdmin())throw Error('Accedi come amministratore.');
+    const selected=active();
+    if(!selected)throw Error('Attiva prima la relazione di Mark e Maria Luisa.');
+    const title=selected.translations?.it?.title||'';
+    if(!title.includes('Mark')||!title.includes('Maria Luisa'))
+      throw Error('Questa prova è riservata alla relazione di Mark e Maria Luisa.');
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref),s=snap.data();
+      const share=(s?.shares||[]).find(x=>x.id===selected.id);
+      if(!share||s.activeShareId!==selected.id||(s.displayMode||'one')!=='one')
+        throw Error('La relazione attiva è cambiata. Nessun dato modificato.');
+      const old=share.readingBlocks;
+      validateBlocks(old,share.translations);
+      if(!Array.isArray(share.inlineSlides)||share.inlineSlides.length!==5)
+        throw Error('Non trovo le cinque slide già inserite.');
+      // Ogni vecchio passaggio viene diviso in segmenti brevi corrispondenti.
+      // Conserviamo tutti i caratteri e il punto di inserimento delle immagini.
+      const blocks=[],endIndex=[];
+      for(const block of old){
+        const parts=Math.max(1,Math.ceil((block.it||'').length/115));
+        const segments=Object.fromEntries(LANGS.map(lang=>[lang,shortSections(block[lang],parts)]));
+        for(let i=0;i<parts;i++){
+          const next=Object.fromEntries(LANGS.map(lang=>[lang,segments[lang][i]]));
+          if(LANGS.some(lang=>!next[lang]?.trim()))throw Error('Impossibile suddividere i passaggi in tutte le lingue.');
+          blocks.push(next);
+        }
+        endIndex.push(blocks.length-1);
+      }
+      validateBlocks(blocks,share.translations);
+      // Se già suddivisa, non fare altre modifiche.
+      if(blocks.length===old.length){message('I passaggi sono già brevi.');return;}
+      const inlineSlides=share.inlineSlides.map(slide=>({
+        ...slide,afterBlock:slide.afterBlock<0?-1:endIndex[slide.afterBlock]
+      }));
+      if(inlineSlides.some(x=>x.afterBlock===undefined||x.afterBlock>=blocks.length))
+        throw Error('Posizione delle slide non valida. Nessun dato modificato.');
+      const shares=s.shares.map(x=>x.id===share.id?{...x,readingBlocks:blocks,inlineSlides}:x);
+      const patch={shares};
+      if(s.readingFollow?.shareId===share.id){
+        patch.readingFollow={...s.readingFollow,session:crypto.randomUUID(),blocks,
+          index:0,revision:(s.readingFollow.revision||0)+1};
+      }
+      if(new TextEncoder().encode(JSON.stringify({...s,...patch})).length>850000)
+        throw Error('Il documento diventerebbe troppo grande. Nessun dato modificato.');
+      tx.update(ref,patch);
+    });
+    stop();refresh();
+    message('Passaggi brevi salvati. Le 5 slide sono rimaste negli stessi punti. Riavvia la lettura per verificare.');
+  }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
     dialog?.remove();const current=getState().readingFollow;const cached={shareId:share.id,blocks:share.readingBlocks};const stored=valid(current,share)?current:valid(cached,share)?cached:null;const proposal=stored?.blocks?.length>1||((share.translations?.it?.body||'').length<=260&&stored)?{blocks:stored.blocks,mode:'saved'}:suggestBlocks(share.translations||{});
@@ -127,7 +177,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('✂️ Evidenzia 2–3 righe (prova)',shortenHighlightedPassages),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
