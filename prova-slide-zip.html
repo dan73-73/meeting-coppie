@@ -20,7 +20,8 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=auto-short-fix-2';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=auto-reading-v3';
+import {refineReadingForSlides} from './reading-slide-segments.mjs';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
 const firebaseConfig = {
@@ -701,11 +702,17 @@ function renderAdmin() {
                 throw Error("I passaggi della relazione non sono più disponibili.");
               if (slides.some(s=>s.afterBlock>=current.readingBlocks.length))
                 throw Error("Una posizione slide supera il numero di passaggi attuali.");
-              const shares=live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:slides}:s);
-              // Controllo conservativo: non superare il limite del documento Firestore.
-              const totalBytes=new TextEncoder().encode(JSON.stringify({...live,shares})).length;
+              // Importazione automatica: divide la lettura senza separare o spostare le slide.
+              const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
+              const shares=live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks}:s);
+              const patch={shares};
+              if(live.readingFollow?.shareId===existing.id){
+                patch.readingFollow={...live.readingFollow,session:crypto.randomUUID(),
+                  blocks:refined.blocks,index:0,revision:(live.readingFollow.revision||0)+1};
+              }
+              const totalBytes=new TextEncoder().encode(JSON.stringify({...live,...patch})).length;
               if(totalBytes>850000) throw Error('Spazio insufficiente nel database ('+Math.round(totalBytes/1024)+' KB). Nessuna relazione modificata.');
-              tx.update(stateRef,{shares});
+              tx.update(stateRef,patch);
             });
           } else {
             await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
