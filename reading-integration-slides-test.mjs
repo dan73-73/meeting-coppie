@@ -1,6 +1,7 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs';
-import {LANGS,suggestBlocks,shortSections,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import {refineReadingForSlides} from './reading-slide-segments.mjs';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
@@ -42,18 +43,26 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       }
     }
   });
+  const splitAttempted=new Set();
   let automaticSplitRunning=false;
+  function needsShortening(share) {
+    return Array.isArray(share?.inlineSlides) && share.inlineSlides.length>0 &&
+      Array.isArray(share?.readingBlocks) &&
+      share.readingBlocks.some(b=>(b.it||'').length>170);
+  }
   function sync(){
-    const selected=active();
-    if(!mic.active && !automaticSplitRunning && isAdmin() &&
-       selected?.inlineSlides?.length && selected?.readingBlocks?.some(b=>(b.it||'').length>170)){
+    const share=active();
+    if(!mic.active && !automaticSplitRunning && isAdmin() && needsShortening(share) && !splitAttempted.has(share.id)){
+      splitAttempted.add(share.id);
       automaticSplitRunning=true;
-      shortenHighlightedPassages().catch(err=>message('Suddivisione automatica non riuscita: '+(err.message||err)))
+      message('Preparazione automatica dei passaggi brevi…');
+      shortenHighlightedPassages()
+        .catch(err=>message('Errore nella preparazione automatica: '+(err?.message||err)))
         .finally(()=>{automaticSplitRunning=false;});
     }
     if(!mic.active)return;
     if(!isAdmin()||getView()!=='admin'){stop();return;}
-    const state=getState(),share=active(),follow=state.readingFollow,cmd=state.readingRemote;
+    const state=getState(),follow=state.readingFollow,cmd=state.readingRemote;
     const changed=session!==follow?.session;
     if(changed){session=follow?.session||null;tail='';pending=null;}
     const language=spokenLanguage(share);
@@ -110,56 +119,38 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function start(){
     const share=active(),record=getState().readingFollow;
     if(!isAdmin()||!valid(record,share))throw Error('Prepara i passaggi della condivisione attiva.');
+    if(needsShortening(share))throw Error('La suddivisione automatica non è completata. Controlla il messaggio sotto i pulsanti.');
     const lang=spokenLanguage(share);if(lang)source=lang;
     stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
     tail='';requestedPause=false;mic.start(locales[source]);
   }
   async function shortenHighlightedPassages(){
-    if(!isAdmin())throw Error('Accedi come amministratore.');
+    if(!isAdmin())throw Error('Accesso amministratore necessario.');
     const selected=active();
-    if(!selected)throw Error('Attiva una relazione.');
+    if(!selected)throw Error('Nessuna relazione attiva.');
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),s=snap.data();
       const share=(s?.shares||[]).find(x=>x.id===selected.id);
-      if(!share||s.activeShareId!==selected.id||(s.displayMode||'one')!=='one')
-        throw Error('La relazione attiva è cambiata. Nessun dato modificato.');
-      const old=share.readingBlocks;
-      validateBlocks(old,share.translations);
-      if(!Array.isArray(share.inlineSlides)||!share.inlineSlides.length)
-        throw Error('Non trovo slide associate alla relazione.');
-      // Ogni vecchio passaggio viene diviso in segmenti brevi corrispondenti.
-      // Conserviamo tutti i caratteri e il punto di inserimento delle immagini.
-      const blocks=[],endIndex=[];
-      for(const block of old){
-        const parts=Math.max(1,Math.ceil((block.it||'').length/90));
-        const segments=Object.fromEntries(LANGS.map(lang=>[lang,shortSections(block[lang],parts)]));
-        for(let i=0;i<parts;i++){
-          const next=Object.fromEntries(LANGS.map(lang=>[lang,segments[lang][i]]));
-          if(LANGS.some(lang=>!next[lang]?.trim()))throw Error('Impossibile suddividere i passaggi in tutte le lingue.');
-          blocks.push(next);
-        }
-        endIndex.push(blocks.length-1);
-      }
-      validateBlocks(blocks,share.translations);
-      // Se già suddivisa, non fare altre modifiche.
-      if(blocks.length===old.length){message('I passaggi sono già brevi.');return;}
-      const inlineSlides=share.inlineSlides.map(slide=>({
-        ...slide,afterBlock:slide.afterBlock<0?-1:endIndex[slide.afterBlock]
-      }));
-      if(inlineSlides.some(x=>x.afterBlock===undefined||x.afterBlock>=blocks.length))
-        throw Error('Posizione delle slide non valida. Nessun dato modificato.');
-      const shares=s.shares.map(x=>x.id===share.id?{...x,readingBlocks:blocks,inlineSlides}:x);
+      if(!share)throw Error('La relazione non è più presente.');
+      if(s.activeShareId!==selected.id||(s.displayMode||'one')!=='one')
+        throw Error('La relazione attiva è cambiata.');
+      if(!needsShortening(share))return;
+      const result=refineReadingForSlides(share.readingBlocks,share.inlineSlides,share.translations);
+      if(!result.changed)return;
+      const shares=s.shares.map(x=>x.id===share.id?{...x,readingBlocks:result.blocks,inlineSlides:result.inlineSlides}:x);
       const patch={shares};
-      if(s.readingFollow?.shareId===share.id){
-        patch.readingFollow={...s.readingFollow,session:crypto.randomUUID(),blocks,
-          index:0,revision:(s.readingFollow.revision||0)+1};
+      if(s.readingFollow?.shareId===share.id) {
+        const oldIndex=Math.max(0,s.readingFollow.index||0);
+        // L'operazione viene effettuata a microfono fermo; la lettura riparte dall'inizio.
+        patch.readingFollow={...s.readingFollow,session:crypto.randomUUID(),
+          blocks:result.blocks,index:0,revision:(s.readingFollow.revision||0)+1};
       }
       if(new TextEncoder().encode(JSON.stringify({...s,...patch})).length>850000)
-        throw Error('Il documento diventerebbe troppo grande. Nessun dato modificato.');
+        throw Error('Spazio dati insufficiente: nessuna modifica salvata.');
       tx.update(ref,patch);
     });
-    stop();refresh();
-    message('Suddivisione automatica completata. Riavvia la lettura per verificare.');
+    refresh();
+    message('Passaggi brevi pronti. Le slide non sono state spostate.');
   }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
