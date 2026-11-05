@@ -45,7 +45,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   let automaticSplitRunning=false;
   function sync(){
     const selected=active();
-    if(!mic.active && !automaticSplitRunning && isAdmin() && getView()==='admin' &&
+    if(!mic.active && !automaticSplitRunning && isAdmin() &&
        selected?.inlineSlides?.length && selected?.readingBlocks?.some(b=>(b.it||'').length>170)){
       automaticSplitRunning=true;
       shortenHighlightedPassages().catch(err=>message('Suddivisione automatica non riuscita: '+(err.message||err)))
