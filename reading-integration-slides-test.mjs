@@ -1,7 +1,7 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs';
 import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
-import {refineReadingForSlides} from './reading-slide-segments.mjs';
+import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
@@ -46,7 +46,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const splitAttempted=new Set();
   let automaticSplitRunning=false;
   function needsShortening(share) {
-    return Array.isArray(share?.inlineSlides) && share.inlineSlides.length>0 &&
+    return share?.readingSegmentationVersion!==2 && Array.isArray(share?.inlineSlides) && share.inlineSlides.length>0 &&
       Array.isArray(share?.readingBlocks) &&
       share.readingBlocks.some(b=>(b.it||'').length>170);
   }
@@ -137,7 +137,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       if(!needsShortening(share))return;
       const result=refineReadingForSlides(share.readingBlocks,share.inlineSlides,share.translations);
       if(!result.changed)return;
-      const shares=s.shares.map(x=>x.id===share.id?{...x,readingBlocks:result.blocks,inlineSlides:result.inlineSlides}:x);
+      const shares=s.shares.map(x=>x.id===share.id?{...x,readingBlocks:result.blocks,inlineSlides:result.inlineSlides,readingSegmentationVersion:2}:x);
       const patch={shares};
       if(s.readingFollow?.shareId===share.id) {
         const oldIndex=Math.max(0,s.readingFollow.index||0);
