@@ -253,12 +253,38 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     // Le slide sono elementi visivi, mai aggiunti ai readingBlocks riconosciuti dal microfono.
     root.append(...slideAt(share,lang,-1,e));
     (valid(r,share)?r.blocks:share.readingBlocks).forEach((b,i)=>{
-      root.append(e('span',{...(valid(r,share)&&i===r.index?{'data-reading-active':'true'}:{}),style:valid(r,share)&&i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang]));
+      root.append(e('span',{'data-reading-block':String(i),...(valid(r,share)&&i===r.index?{'data-reading-active':'true'}:{}),style:valid(r,share)&&i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang]));
       root.append(...slideAt(share,lang,i,e));
     });
     const key=valid(r,share)?r.session+'|'+r.index+'|'+lang+'|'+getView():lastScroll;if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
+  function updateHighlight(shareId,index){
+    const state=getState(),share=(state.shares||[]).find(x=>x.id===shareId),r=state.readingFollow;
+    if(!valid(r,share))return false;
+    const blocks=document.querySelectorAll('[data-reading-block]');
+    if(blocks.length!==r.blocks.length)return false;
+    let selected=null;
+    for(const node of blocks){
+      const isActive=Number(node.getAttribute('data-reading-block'))===index;
+      if(isActive){
+        node.setAttribute('data-reading-active','true');
+        node.style.background='rgba(232,200,117,.38)';
+        node.style.borderRadius='3px';
+        node.style.boxDecorationBreak='clone';
+        selected=node;
+      }else{
+        node.removeAttribute('data-reading-active');
+        node.style.background='';
+        node.style.borderRadius='';
+        node.style.boxDecorationBreak='';
+      }
+    }
+    if(selected)requestAnimationFrame(()=>{
+      if(selected.isConnected)selected.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+    return true;
+  }
   window.addEventListener('pagehide',stop);
-  return {panel,remotePanel,body,sync,stop};
+  return {panel,remotePanel,body,sync,stop,updateHighlight};
 }
