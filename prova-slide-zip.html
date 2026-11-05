@@ -640,15 +640,17 @@ function renderAdmin() {
               s.translations?.it?.title===target.translations.it.title &&
               ['it','fr','es','en','pt'].every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
             );
-            if (!existing) throw Error("Non trovo la relazione identica già importata. Per sicurezza non creo un duplicato.");
-            if (!existing.readingBlocks?.length) throw Error("La relazione già importata non ha i passaggi preparati.");
+            if (!existing && (appState.shares||[]).some(s=>s.translations?.it?.title===target.translations.it.title))
+              throw Error("Esiste già una relazione con lo stesso titolo ma testi diversi: nessuna copia creata.");
+            const originalBlocks=existing?.readingBlocks||target.readingBlocks;
+            if (!originalBlocks?.length) throw Error("Le cinque lingue non hanno passaggi corrispondenti. Controlla i testi del pacchetto.");
             const slides=[];
             const langOrder=['it','fr','es','en','pt'];
             // Le immagini vengono convertite in URL incorporati nel documento.
             // Non si usa Firebase Storage (che bloccava l'importazione).
             const files=[];
             for (const spec of importZip.batches) {
-              if (spec.afterBlock >= existing.readingBlocks.length) throw Error("Posizione slide non valida: "+spec.number);
+              if (spec.afterBlock >= originalBlocks.length) throw Error("Posizione slide non valida: "+spec.number);
               const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
               slides.push(item);
               for (const lang of langOrder) {
@@ -691,22 +693,25 @@ function renderAdmin() {
               const snap=await tx.get(stateRef);
               if (!snap.exists()) throw Error("Database non disponibile: nessuna relazione modificata.");
               const live=snap.data();
-              const matches=(live.shares||[]).filter(s =>
-                s.id===existing.id &&
-                s.translations?.it?.title===target.translations.it.title &&
-                langOrder.every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
-              );
-              if (matches.length!==1) throw Error("La relazione è cambiata durante il caricamento. Non salvo per evitare modifiche errate.");
-              const current=matches[0];
-              if (!Array.isArray(current.readingBlocks)||!current.readingBlocks.length)
-                throw Error("I passaggi della relazione non sono più disponibili.");
-              if (slides.some(s=>s.afterBlock>=current.readingBlocks.length))
+              const sameTitle=(live.shares||[]).filter(s=>s.translations?.it?.title===target.translations.it.title);
+              const matches=sameTitle.filter(s=>
+                langOrder.every(lang=>s.translations?.[lang]?.body===target.translations[lang].body));
+              if(matches.length>1 || sameTitle.length!==matches.length)
+                throw Error("Titolo duplicato o testi diversi: nessuna importazione eseguita.");
+              const current=matches[0]||target;
+              if(existing && current.id!==existing.id)
+                throw Error("La relazione esistente è cambiata. Nessun salvataggio eseguito.");
+              if(!Array.isArray(current.readingBlocks)||!current.readingBlocks.length)
+                throw Error("I passaggi nelle cinque lingue non sono disponibili.");
+              if(slides.some(s=>s.afterBlock>=current.readingBlocks.length))
                 throw Error("Una posizione slide supera il numero di passaggi attuali.");
-              // Importazione automatica: divide la lettura senza separare o spostare le slide.
               const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
-              const shares=live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks}:s);
+              const updated={...current,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks};
+              const shares=matches.length
+                ? live.shares.map(s=>s.id===current.id?updated:s)
+                : [...(live.shares||[]),updated];
               const patch={shares};
-              if(live.readingFollow?.shareId===existing.id){
+              if(live.readingFollow?.shareId===current.id){
                 patch.readingFollow={...live.readingFollow,session:crypto.randomUUID(),
                   blocks:refined.blocks,index:0,revision:(live.readingFollow.revision||0)+1};
               }
@@ -719,7 +724,7 @@ function renderAdmin() {
           }
           const n = newShares.length;
           importItems=[];importError="";importZip=null;adminTab="list";render();
-          alert(existing?"Le 5 slide nelle 5 lingue sono state collegate alla relazione già presente, senza duplicarla.":"Importazione di "+n+" condivisioni completata.");
+          alert(existing?"Slide collegate alla relazione già presente. Passaggi di lettura brevi preparati automaticamente.":"Relazione e slide importate insieme. Passaggi brevi preparati automaticamente.");
         } catch(err) {
           importError=err?.message||String(err);
           confirmBtn.textContent='⚠️ Errore: '+importError+' · riprova';
@@ -730,7 +735,7 @@ function renderAdmin() {
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi, oppure uno ZIP con testi e slide nelle cinque lingue (formato PROVA). Nella prova ZIP, le immagini vengono compresse e collegate direttamente alla relazione identica già presente, senza toccare testi o microfono."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi, oppure uno ZIP con testi e slide nelle cinque lingue (formato PROVA). Nella prova ZIP, testi e slide vengono importati insieme oppure collegati alla relazione identica già presente. L'app prepara automaticamente i passaggi brevi senza cambiare il microfono."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
