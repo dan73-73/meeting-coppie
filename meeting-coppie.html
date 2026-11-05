@@ -969,6 +969,12 @@ async function deleteSection(id) {
 
 // Misuratore in sola lettura: non cambia Firebase, microfono o condivisioni.
 let migrationBusy=false;
+let migrationStatus='ZIP presente su GitHub. Migrazione non ancora confermata.';
+function setMigrationStatus(value){
+  migrationStatus=value;
+  const node=document.getElementById('slide-migration-status');
+  if(node)node.textContent=value;
+}
 async function migrateExistingSlides(){
   if(migrationBusy)return;
   const candidates=(appState.shares||[]).filter(s=>
@@ -980,10 +986,12 @@ async function migrateExistingSlides(){
   }
   const candidate=candidates[0],archive='mark_maria_luisa_slides.zip';
   migrationBusy=true;
+  setMigrationStatus('1/3 · Verifica del file ZIP pubblico in corso…');
   const btn=document.getElementById('migrate-slide-archive');
   if(btn){btn.disabled=true;btn.textContent='Verifica ZIP pubblicato su GitHub…';}
   try{
     await checkSlideArchive(archive,candidate.inlineSlides.map(s=>s.number));
+    setMigrationStatus('2/3 · Le slide sono disponibili. Aggiornamento Firebase in corso…');
     await runTransaction(firestore,async tx=>{
       const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
       if(!snap.exists())throw Error('Documento principale non disponibile.');
@@ -995,10 +1003,11 @@ async function migrateExistingSlides(){
       const shares=state.shares.map(s=>s.id===share.id?update:s);
       tx.update(ref,{shares});
     });
-    alert('Operazione riuscita! Le 25 slide ora sono collegate al file GitHub. I testi e il microfono sono invariati.');
+    setMigrationStatus('3/3 · Operazione completata: slide collegate a GitHub, database alleggerito.');
+    alert('Collegamento completato! Verifica la nuova percentuale in alto.');
   }catch(err){
-    alert('Non ho liberato spazio: '+(err.message||err)+
-      '\\nPrima carica '+archive+' nella cartella slide-archives su GitHub.');
+    setMigrationStatus('ERRORE: '+(err.code||'')+' '+(err.message||err));
+    console.error('Migrazione slide non riuscita',err);
   }finally{
     migrationBusy=false;
     render();
@@ -1031,7 +1040,9 @@ function storageMeter(){
     Object.values(sl.images||{}).some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
   if(needsMigration)div.append(
     e('p',{style:{color:'#e8dcc8',marginTop:'9px'}},
-      'Soluzione senza abbonamento: carica il file mark_maria_luisa_slides.zip in GitHub, poi collega le slide.'),
+      'Archivio GitHub caricato: ora verifica il collegamento senza cancellare le immagini prima del controllo.'),
+    e('p',{id:'slide-migration-status',role:'status',
+      style:{color:'#ffd08b',fontWeight:'bold',marginTop:'7px',whiteSpace:'pre-wrap'}},migrationStatus),
     e('a',{href:'https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives',
       target:'_blank',rel:'noopener noreferrer',style:{color:'#e8c87a'}},
       '1. Apri GitHub per caricare lo ZIP delle slide'),
