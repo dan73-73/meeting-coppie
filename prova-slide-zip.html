@@ -658,8 +658,26 @@ function renderAdmin() {
               }
               slides.push({number:spec.number,afterBlock:spec.afterBlock,images});
             }
-            const updatedShares=(appState.shares||[]).map(share=>share.id===existing.id?{...share,inlineSlides:slides}:share);
-            await saveState({...appState,shares:updatedShares});
+            // Aggiorna solo le immagini della relazione esistente con dati freschi.
+            // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
+            await runTransaction(firestore, async tx => {
+              const stateRef=doc(firestore,"state","main");
+              const snap=await tx.get(stateRef);
+              if (!snap.exists()) throw Error("Database non disponibile: nessuna relazione modificata.");
+              const live=snap.data();
+              const matches=(live.shares||[]).filter(s =>
+                s.id===existing.id &&
+                s.translations?.it?.title===target.translations.it.title &&
+                langOrder.every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
+              );
+              if (matches.length!==1) throw Error("La relazione è cambiata durante il caricamento. Non salvo per evitare modifiche errate.");
+              const current=matches[0];
+              if (!Array.isArray(current.readingBlocks)||!current.readingBlocks.length)
+                throw Error("I passaggi della relazione non sono più disponibili.");
+              if (slides.some(s=>s.afterBlock>=current.readingBlocks.length))
+                throw Error("Una posizione slide supera il numero di passaggi attuali.");
+              tx.update(stateRef,{shares:live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:slides}:s)});
+            });
           } else {
             await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
           }
