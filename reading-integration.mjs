@@ -1,4 +1,5 @@
 import {createMicrophone} from './microphone-engine.mjs';
+import {slideAt} from './reading-slides.mjs';
 import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
@@ -174,7 +175,13 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function body(share,lang,content){
     const r=getState().readingFollow;const style={fontSize:'16px',lineHeight:'1.8',color:'#c8b89a',marginBottom:'16px',whiteSpace:'pre-wrap'};
     if(!valid(r,share))return e('p',{style},content?.body||'');
-    const root=e('div',{style});r.blocks.forEach((b,i)=>root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang])));
+    const root=e('div',{style});
+    // Le slide sono elementi visivi, mai aggiunti ai readingBlocks riconosciuti dal microfono.
+    root.append(...slideAt(share,lang,-1,e));
+    r.blocks.forEach((b,i)=>{
+      root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang]));
+      root.append(...slideAt(share,lang,i,e));
+    });
     const key=r.session+'|'+r.index+'|'+lang+'|'+getView();if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
