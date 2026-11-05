@@ -652,36 +652,46 @@ function renderAdmin() {
               slides.push(item);
               for (const lang of langOrder) tasks.push({spec,item,lang});
             }
-            // Carica poche immagini contemporaneamente; se la rete cade, riprova automaticamente.
-            // Nessuna relazione viene modificata finché TUTTE le immagini non risultano caricate.
-            const send=async ({spec,item,lang})=>{
-              const filename=spec.images[lang];
-              const bytes=await importZip.zip.file(filename).async('uint8array');
-              const place=storageRef(storage,'meeting-slides/'+existing.id+'/'+lang+'/slide_'+String(spec.number).padStart(2,'0')+'.webp');
-              for(let attempt=1;attempt<=3;attempt++){
-                try{
-                  await uploadBytes(place,bytes,{contentType:'image/webp'});
-                  item.images[lang]=await getDownloadURL(place);
-                  importProgress='Slide caricate: '+(++done)+' di '+total;
-                  confirmBtn.textContent=importProgress;
-                  return;
-                }catch(err){
-                  if(attempt===3 || err?.code==='storage/unauthorized' || err?.code==='storage/unauthenticated')
-                    throw Error("Blocco su slide "+spec.number+" ("+lang+"): "+(err?.message||err));
-                  confirmBtn.textContent='Connessione interrotta: tentativo '+(attempt+1)+' di 3 · '+lang+' '+spec.number;
-                  await new Promise(resolve=>setTimeout(resolve,1000*attempt));
-                }
+            // Le immagini vengono convertite in URL incorporati nel documento.
+            // Non si usa Firebase Storage (che bloccava l'importazione).
+            const files=[];
+            for (const spec of importZip.batches) {
+              if (spec.afterBlock >= existing.readingBlocks.length) throw Error("Posizione slide non valida: "+spec.number);
+              const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
+              slides.push(item);
+              for (const lang of langOrder) {
+                const bytes=await importZip.zip.file(spec.images[lang]).async('blob');
+                files.push({item,lang,blob:bytes});
               }
+            }
+            const compressImage=async(blob,width,quality)=>{
+              const bitmap=await createImageBitmap(blob);
+              try{
+                const scale=Math.min(1,width/bitmap.width);
+                const canvas=document.createElement('canvas');
+                canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+                canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+                const ctx=canvas.getContext('2d');
+                if(!ctx) throw Error('Impossibile elaborare le immagini sul computer.');
+                ctx.fillStyle='#ffffff';
+                ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+                return canvas.toDataURL('image/webp',quality);
+              }finally{bitmap.close();}
             };
-            let next=0;
-            const worker=async()=>{
-              while(next<tasks.length){
-                const task=tasks[next++];
-                await send(task);
+            let size=0;
+            // Regola automaticamente la dimensione per il limite di Firestore.
+            for(const width of [1100,900,720,600]){
+              let done=0;size=0;
+              for(const file of files){
+                file.item.images[file.lang]=await compressImage(file.blob,width,.70);
+                size+=file.item.images[file.lang].length;
+                confirmBtn.textContent='Preparazione slide: '+(++done)+' di '+files.length;
               }
-            };
-            await Promise.all([worker(),worker(),worker()]);
-            confirmBtn.textContent='25 immagini caricate. Collegamento alla relazione…';
+              if(size<=500000)break;
+            }
+            if(size>500000) throw Error('Immagini troppo grandi per il salvataggio sicuro. Nessuna relazione modificata.');
+            confirmBtn.textContent='Collegamento delle 25 immagini alla relazione…';
             // Aggiorna solo le immagini della relazione esistente con dati freschi.
             // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
             await runTransaction(firestore, async tx => {
@@ -700,7 +710,11 @@ function renderAdmin() {
                 throw Error("I passaggi della relazione non sono più disponibili.");
               if (slides.some(s=>s.afterBlock>=current.readingBlocks.length))
                 throw Error("Una posizione slide supera il numero di passaggi attuali.");
-              tx.update(stateRef,{shares:live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:slides}:s)});
+              const shares=live.shares.map(s=>s.id===existing.id?{...s,inlineSlides:slides}:s);
+              // Controllo conservativo: non superare il limite del documento Firestore.
+              const totalBytes=new TextEncoder().encode(JSON.stringify({...live,shares})).length;
+              if(totalBytes>850000) throw Error('Spazio insufficiente nel database ('+Math.round(totalBytes/1024)+' KB). Nessuna relazione modificata.');
+              tx.update(stateRef,{shares});
             });
           } else {
             await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
