@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Meeting Coppie</title>
+<title>Meeting Coppie · Retrouvaille 2026</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0d0d1a; font-family: Georgia, serif; color: #e8dcc8; min-height: 100vh; }
@@ -17,8 +17,11 @@ textarea, input, select { font-family: Georgia, serif; }
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration.mjs?v=paragraph-align-e4dbc8';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=complete-sentences-v4';
+import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
 const firebaseConfig = {
@@ -32,6 +35,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const firestore = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp);
 
 const DEFAULT_SECTIONS = [
   { id: "ven-sera", label: "Venerdì sera", icon: "🌙", order: 1 },
@@ -131,6 +135,9 @@ let libEditId = null;
 let libFilterCommunity = "all";
 let importItems = [];
 let importError = "";
+let importZip = null;
+let importBusy = false;
+let importProgress = "";
 const reading = createReadingIntegration({db:firestore,e,getState:()=>appState,isAdmin:()=>adminAuth,getView:()=>currentView,refresh:()=>render()});
 
 window.addEventListener("hashchange", () => {
@@ -540,13 +547,41 @@ function renderAdmin() {
 
   // ── TAB: IMPORTA ──
   else if (adminTab === "import") {
-    const fileInput = e("input", { type:"file", accept:".json,application/json", style:{display:"block", width:"100%", padding:"12px", borderRadius:"10px", border:"1px dashed rgba(200,169,110,0.4)", background:"rgba(255,255,255,0.03)", color:"#e8dcc8", marginTop:"14px"} });
+    const fileInput = e("input", { type:"file", accept:".json,.zip,application/json,application/zip", style:{display:"block", width:"100%", padding:"12px", borderRadius:"10px", border:"1px dashed rgba(200,169,110,0.4)", background:"rgba(255,255,255,0.03)", color:"#e8dcc8", marginTop:"14px"} });
     fileInput.addEventListener("change", async ev => {
       importError = ""; importItems = [];
       const file = ev.target.files?.[0];
       if (!file) { render(); return; }
       try {
-        const parsed = JSON.parse(await file.text());
+        let parsed;
+        importZip = null;
+        if (/\.zip$/i.test(file.name)) {
+          const zip = await JSZip.loadAsync(file);
+          const entries = Object.keys(zip.files);
+          const find = basename => entries.find(p => p.split('/').pop().toLowerCase()===basename.toLowerCase());
+          const jsonEntry = find('IMPORTA_TESTI_5_LINGUE.json');
+          const posEntry = find('POSIZIONE_SLIDE.json');
+          if (!jsonEntry || !posEntry) throw Error("Lo ZIP deve contenere IMPORTA_TESTI_5_LINGUE.json e POSIZIONE_SLIDE.json.");
+          parsed = JSON.parse(await zip.file(jsonEntry).async('string'));
+          const positions = JSON.parse(await zip.file(posEntry).async('string'));
+          const mapping = positions.slide_positions || [];
+          if (!mapping.length) throw Error("Manca l'elenco delle posizioni delle slide.");
+          const allowed = ['it','fr','es','en','pt'];
+          const batches = mapping.map(p => {
+            const images={};
+            for (const lang of allowed) {
+              const filename = lang+'/slide_'+String(p.slide).padStart(2,'0')+'.webp';
+              const key = entries.find(k => k.toLowerCase().endsWith('/'+filename) || k.toLowerCase()===filename);
+              if (!key || !zip.file(key)) throw Error("Nello ZIP manca "+filename);
+              images[lang] = key;
+            }
+            if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
+            return {number:p.slide,afterBlock:p.afterBlock,images};
+          });
+          importZip = {zip,batches};
+        } else {
+          parsed = JSON.parse(await file.text());
+        }
         const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.shares) ? parsed.shares : []);
         if (!source.length) throw new Error("Il file non contiene condivisioni.");
         const validSections = new Set((appState.sections||[]).map(s=>s.id));
@@ -590,18 +625,117 @@ function renderAdmin() {
     const confirmBtn = importItems.length ? e("button", {
       style:{padding:"10px 22px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"},
       onClick: async () => {
-        const stamp = Date.now();
-        const newShares = importItems.map((item, idx) => ({...item, id:"s"+stamp+"-"+idx}));
-        await saveState({ ...appState, shares:[...(appState.shares||[]), ...newShares] });
-        const n = newShares.length;
-        importItems = []; importError = ""; adminTab = "list"; render();
-        alert(n+" condivision"+(n===1?"e":"i")+" importat"+(n===1?"a":"e")+" con successo. Le condivisioni già presenti non sono state modificate.");
+        if (importBusy) return;
+        importBusy=true;
+        confirmBtn.disabled=true;
+        confirmBtn.textContent="Caricamento in corso…";
+        try {
+          const stamp = Date.now();
+          const newShares = importItems.map((item, idx) => ({...item, id:"s"+stamp+"-"+idx}));
+          let existing=null;
+          if (importZip) {
+            if (newShares.length !== 1) throw Error("Il pacchetto prova deve contenere una sola relazione.");
+            const target = newShares[0];
+            existing=(appState.shares||[]).find(s =>
+              s.translations?.it?.title===target.translations.it.title &&
+              ['it','fr','es','en','pt'].every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
+            );
+            if (!existing && (appState.shares||[]).some(s=>s.translations?.it?.title===target.translations.it.title))
+              throw Error("Esiste già una relazione con lo stesso titolo ma testi diversi: nessuna copia creata.");
+            const originalBlocks=existing?.readingBlocks||target.readingBlocks;
+            if (!originalBlocks?.length) throw Error("Le cinque lingue non hanno passaggi corrispondenti. Controlla i testi del pacchetto.");
+            const slides=[];
+            const langOrder=['it','fr','es','en','pt'];
+            // Le immagini vengono convertite in URL incorporati nel documento.
+            // Non si usa Firebase Storage (che bloccava l'importazione).
+            const files=[];
+            for (const spec of importZip.batches) {
+              if (spec.afterBlock >= originalBlocks.length) throw Error("Posizione slide non valida: "+spec.number);
+              const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
+              slides.push(item);
+              for (const lang of langOrder) {
+                const bytes=await importZip.zip.file(spec.images[lang]).async('blob');
+                files.push({item,lang,blob:bytes});
+              }
+            }
+            const compressImage=async(blob,width,quality)=>{
+              const bitmap=await createImageBitmap(blob);
+              try{
+                const scale=Math.min(1,width/bitmap.width);
+                const canvas=document.createElement('canvas');
+                canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+                canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+                const ctx=canvas.getContext('2d');
+                if(!ctx) throw Error('Impossibile elaborare le immagini sul computer.');
+                ctx.fillStyle='#ffffff';
+                ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+                return canvas.toDataURL('image/webp',quality);
+              }finally{bitmap.close();}
+            };
+            let size=0;
+            // Regola automaticamente la dimensione per il limite di Firestore.
+            for(const width of [1100,900,720,600]){
+              let done=0;size=0;
+              for(const file of files){
+                file.item.images[file.lang]=await compressImage(file.blob,width,.70);
+                size+=file.item.images[file.lang].length;
+                confirmBtn.textContent='Preparazione slide: '+(++done)+' di '+files.length;
+              }
+              if(size<=500000)break;
+            }
+            if(size>500000) throw Error('Immagini troppo grandi per il salvataggio sicuro. Nessuna relazione modificata.');
+            confirmBtn.textContent='Collegamento delle 25 immagini alla relazione…';
+            // Aggiorna solo le immagini della relazione esistente con dati freschi.
+            // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
+            await runTransaction(firestore, async tx => {
+              const stateRef=doc(firestore,"state","main");
+              const snap=await tx.get(stateRef);
+              if (!snap.exists()) throw Error("Database non disponibile: nessuna relazione modificata.");
+              const live=snap.data();
+              const sameTitle=(live.shares||[]).filter(s=>s.translations?.it?.title===target.translations.it.title);
+              const matches=sameTitle.filter(s=>
+                langOrder.every(lang=>s.translations?.[lang]?.body===target.translations[lang].body));
+              if(matches.length>1 || sameTitle.length!==matches.length)
+                throw Error("Titolo duplicato o testi diversi: nessuna importazione eseguita.");
+              const current=matches[0]||target;
+              if(existing && current.id!==existing.id)
+                throw Error("La relazione esistente è cambiata. Nessun salvataggio eseguito.");
+              if(!Array.isArray(current.readingBlocks)||!current.readingBlocks.length)
+                throw Error("I passaggi nelle cinque lingue non sono disponibili.");
+              if(slides.some(s=>s.afterBlock>=current.readingBlocks.length))
+                throw Error("Una posizione slide supera il numero di passaggi attuali.");
+              const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
+              const updated={...current,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks,readingSegmentationVersion:2};
+              const shares=matches.length
+                ? live.shares.map(s=>s.id===current.id?updated:s)
+                : [...(live.shares||[]),updated];
+              const patch={shares};
+              if(live.readingFollow?.shareId===current.id){
+                patch.readingFollow={...live.readingFollow,session:crypto.randomUUID(),
+                  blocks:refined.blocks,index:0,revision:(live.readingFollow.revision||0)+1};
+              }
+              const totalBytes=new TextEncoder().encode(JSON.stringify({...live,...patch})).length;
+              if(totalBytes>850000) throw Error('Spazio insufficiente nel database ('+Math.round(totalBytes/1024)+' KB). Nessuna relazione modificata.');
+              tx.update(stateRef,patch);
+            });
+          } else {
+            await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
+          }
+          const n = newShares.length;
+          importItems=[];importError="";importZip=null;adminTab="list";render();
+          alert(existing?"Slide collegate alla relazione già presente. Passaggi di lettura brevi preparati automaticamente.":"Relazione e slide importate insieme. Passaggi brevi preparati automaticamente.");
+        } catch(err) {
+          importError=err?.message||String(err);
+          confirmBtn.textContent='⚠️ Errore: '+importError+' · riprova';
+          confirmBtn.disabled=false;
+        } finally {importBusy=false;}
       }
     }, "✅ Conferma importazione ("+importItems.length+")") : null;
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Carica un file JSON preparato per questa app. I passaggi nelle cinque lingue si sincronizzano automaticamente quando i paragrafi corrispondono; altrimenti viene mostrato un avviso. L’importazione aggiunge condivisioni e non cancella quelle esistenti."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi oppure uno ZIP con testi e slide nelle cinque lingue. Se la relazione esiste già, le slide vengono collegate senza creare duplicati; altrimenti la relazione viene aggiunta. I passaggi brevi sono preparati automaticamente senza modificare il microfono."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
