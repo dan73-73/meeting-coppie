@@ -1,8 +1,8 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs';
-import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import {LANGS,suggestBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
-import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
   const ref=doc(db,'state','main');
@@ -10,9 +10,9 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null;
+  let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null,localIndex=null,localRevision=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
-  function stop(){requestedPause=false;pending=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
+  function stop(){requestedPause=false;pending=null;localIndex=null;localRevision=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
   function valid(record,share){return record&&record.shareId===share?.id&&Array.isArray(record.blocks)&&record.blocks.length>0&&LANGS.every(l=>record.blocks.map(b=>b[l]||'').join('')===(share.translations?.[l]?.body||''));}
   async function acknowledge(id,confirmedMode){try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),state=snap.data();if(state?.readingRemote?.id===id&&state?.readingRemoteAck?.id!==id)tx.update(ref,{readingRemoteAck:{id,mode:confirmedMode,session,at:Date.now()}});});}catch(err){message('Comando ricevuto ma conferma non registrata: '+(err.message||err));}}
@@ -36,8 +36,21 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       if(!valid(live,share))return;
       for(let i=event.resultIndex;i<event.results.length;i++){
         const words=event.results[i][0].transcript,combined=(tail+' '+words).trim();
-        let index=locatePassage(words,live.blocks,source,Math.max(0,live.index));
-        if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));
+        const cursor=Math.max(0,live.index||0,localRevision===(live.revision||0)?localIndex||0:0);
+        let index=locatePassage(words,live.blocks,source,cursor);
+        if(index===null)index=locatePassage(combined,live.blocks,source,cursor);
+        if(index===null&&tokenize(combined).length>=6){
+          // Recupera la posizione se Firebase risponde in ritardo: richiede
+          // corrispondenza molto alta ed evita frasi ambigue.
+          const matches=[];
+          for(let p=cursor+5;p<Math.min(live.blocks.length,cursor+25);p++){
+            const value=scorePassage(combined,live.blocks[p]?.[source]||'');
+            if(value>=0.88)matches.push({p,value});
+          }
+          matches.sort((a,b)=>b.value-a.value);
+          if(matches.length&&(!matches[1]||matches[0].value-matches[1].value>=0.15))
+            index=matches[0].p;
+        }
         if(index!==null)queue(index);
         if(event.results[i].isFinal)tail=combined.split(/\\s+/).slice(-12).join(' ');
       }
@@ -63,7 +76,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||getView()!=='admin'){stop();return;}
     const state=getState(),follow=state.readingFollow,cmd=state.readingRemote;
     const changed=session!==follow?.session;
-    if(changed){session=follow?.session||null;tail='';pending=null;}
+    if(changed){session=follow?.session||null;tail='';pending=null;localIndex=null;localRevision=null;}
     const language=spokenLanguage(share);
     if(language&&language!==source){source=language;mic.setLanguage(locales[source]);}
     if(cmd?.id&&cmd.id!==lastRemoteCommand){
@@ -110,35 +123,35 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const action=fn=>async()=>{try{await fn();}catch(err){message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
     const s=getState(),share=active(),record=s.readingFollow;if(!isAdmin()||!valid(record,share))throw Error('Attiva e prepara prima una condivisione.');
-    pending=null;tail='';const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
+    pending=null;tail='';localIndex=null;localRevision=null;const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
     await runTransaction(db,async tx=>{const snap=await tx.get(ref),now=snap.data(),r=now?.readingFollow;if(now?.activeShareId!==share.id||r?.session!==record.session)throw Error('La condivisione attiva è cambiata.');tx.update(ref,{readingFollow:{...r,index:bounded,revision:(r.revision||0)+(manual?1:0)}});});
   }
-  // Consegna l'ultimo passaggio riconosciuto, senza accumulare invii intermedi.
-  // Il controllo sessione/revisione nella transazione protegge i comandi manuali.
+  // Non leggere il documento con tutte le immagini per ogni nuova frase.
+  // Aggiorna solo il campo index, senza transazioni sulle slide.
   function queue(index){
-    const r=getState().readingFollow;
-    if(!r||index<=r.index)return;
-    if(pending?.session===r.session&&pending.revision===(r.revision||0))
-      index=Math.max(index,pending.index);
-    pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};
-    if(!timer&&!sending)timer=setTimeout(flush,60);
+    const r=getState().readingFollow;if(!r)return;
+    const rev=r.revision||0;
+    const current=localRevision===rev&&localIndex!==null?Math.max(localIndex,r.index||0):r.index||0;
+    if(index<=current)return;
+    localIndex=index;localRevision=rev;
+    pending={index,session:r.session,revision:rev,shareId:r.shareId};
+    if(!timer&&!sending)timer=setTimeout(flush,80);
   }
   async function flush(){
-    timer=null;
-    if(sending||!pending)return;
+    timer=null;if(sending||!pending)return;
     const item=pending;pending=null;
-    if(!mic.active||mic.paused||!isAdmin())return;
+    const state=getState(),r=state.readingFollow;
+    if(!mic.active||mic.paused||!isAdmin()||
+       state.activeShareId!==item.shareId||
+       r?.session!==item.session||(r.revision||0)!==item.revision)return;
     sending=true;
     try{
-      await runTransaction(db,async tx=>{
-        const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;
-        if(s?.activeShareId!==item.shareId||(s.displayMode||'one')!=='one'||
-           r?.session!==item.session||(r.revision||0)!==item.revision)return;
-        // Mai tornare indietro per via di un aggiornamento arrivato in ritardo.
-        if(item.index>(r.index??-1))tx.update(ref,{readingFollow:{...r,index:item.index}});
-      });
+      await updateDoc(ref,{'readingFollow.index':item.index});
+      message('Lettura sincronizzata · passaggio '+(item.index+1));
     }catch(err){
-      message('Sincronizzazione temporaneamente non disponibile: '+(err.message||err));
+      message('Errore invio lettura: '+(err.code||err.message||err));
+      // Non avanzare artificialmente il cursore se il salvataggio è fallito.
+      localIndex=r.index??0;
     }finally{
       sending=false;
       if(pending&&!timer)timer=setTimeout(flush,0);
@@ -149,7 +162,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||!valid(record,share))throw Error('Prepara i passaggi della condivisione attiva.');
     if(needsShortening(share))throw Error('La suddivisione automatica non è completata. Controlla il messaggio sotto i pulsanti.');
     const lang=spokenLanguage(share);if(lang)source=lang;
-    stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
+    stop();localIndex=record.index??0;localRevision=record.revision||0;session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
     tail='';requestedPause=false;mic.start(locales[source]);
   }
   async function shortenHighlightedPassages(){

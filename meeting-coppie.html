@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=highlight-optimization-v6';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=reading-field-update-v8';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -1041,8 +1041,11 @@ subscribeState(state => {
     before.revision===after.revision && before.index!==after.index &&
     previous.activeShareId===appState.activeShareId &&
     previous.displayMode===appState.displayMode &&
-    JSON.stringify(previous.shares)===JSON.stringify(appState.shares) &&
-    JSON.stringify(previous.sections)===JSON.stringify(appState.sections);
+    previous.shares?.length===appState.shares?.length &&
+    previous.shares?.every((s,i)=>s.id===appState.shares[i]?.id &&
+      s.readingBlocks?.length===appState.shares[i]?.readingBlocks?.length &&
+      s.inlineSlides?.length===appState.shares[i]?.inlineSlides?.length) &&
+    previous.sections?.length===appState.sections?.length;
   if(sameContext && reading.updateHighlight(after.shareId,after.index))return;
   render();
 });
