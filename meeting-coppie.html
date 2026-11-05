@@ -690,7 +690,19 @@ function renderAdmin() {
               tx.update(stateRef,patch);
             });
           } else {
-            await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
+            // Controllo preventivo: non provare a salvare documenti oltre il limite prudenziale.
+            // La relazione attiva, il QR e l'integrazione microfono rimangono invariati.
+            const proposed={...appState,shares:[...(appState.shares||[]),...newShares]};
+            const proposedBytes=new TextEncoder().encode(JSON.stringify(proposed)).length;
+            if(proposedBytes>850000){
+              const currentBytes=new TextEncoder().encode(JSON.stringify(appState)).length;
+              const addedKb=Math.round((proposedBytes-currentBytes)/1024);
+              throw Error('Questa importazione richiede circa '+addedKb+
+                ' KB aggiuntivi e supererebbe il limite prudenziale del database. '+
+                'Non è stato salvato nulla. Conserva il file originale: prima occorre '+
+                'attivare la suddivisione dei testi in documenti Firebase separati.');
+            }
+            await saveState(proposed);
           }
           const n = newShares.length;
           importItems=[];importError="";importZip=null;adminTab="list";render();
@@ -705,7 +717,7 @@ function renderAdmin() {
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi oppure lo ZIP completo con testi e slide nelle cinque lingue. Prima pubblica su GitHub solo lo ZIP delle immagini, con lo stesso nome seguito da _slides.zip. Le relazioni e le traduzioni rimangono private nel database; le slide devono essere adatte alla pubblicazione sul sito."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Puoi caricare i nuovi file JSON con i testi nelle cinque lingue. L'app controlla lo spazio prima del salvataggio e non cancella nulla se il limite viene superato. Per i pacchetti con slide serve ancora il relativo archivio immagini su GitHub. I testi e le traduzioni restano privati in Firebase."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
@@ -1040,7 +1052,7 @@ function storageMeter(){
   const div=e('div',{style:{margin:'12px auto',padding:'14px 18px',maxWidth:'820px',borderRadius:'12px',
     background:'rgba(200,169,110,.07)',border:'1px solid rgba(200,169,110,.3)',
     color:'#e8dcc8',fontSize:'13px',lineHeight:'1.6'}},
-    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'% · RIPARAZIONE AUTO 12'),
+    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'%'),
     e('p',{},'Occupazione stimata: '+kb(bytes)+' KB · Ancora disponibili: circa '+kb(remaining)+' KB'),
     e('div',{style:{height:'9px',width:'100%',background:'#36313a',borderRadius:'8px',margin:'9px 0'}},
       e('div',{style:{height:'9px',width:percent+'%',background:near?'#dba07e':'#c8a96e',borderRadius:'8px'}})),
