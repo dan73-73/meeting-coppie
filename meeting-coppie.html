@@ -21,7 +21,7 @@ import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https:
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
 import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=archive-views-v9';
-import {checkSlideArchive} from './reading-slides-test.mjs?v=static-archive-v1';
+import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -976,12 +976,13 @@ function setMigrationStatus(value){
   if(node)node.textContent=value;
 }
 async function migrateExistingSlides(){
+  setMigrationStatus('Pulsante premuto. Controllo dei dati in corso…');
   if(migrationBusy)return;
   const candidates=(appState.shares||[]).filter(s=>
     (s.inlineSlides||[]).some(sl=>Object.values(sl.images||{})
       .some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
   if(candidates.length!==1){
-    alert('Per sicurezza la migrazione automatica richiede una sola relazione con slide incorporate. Nessun dato modificato.');
+    setMigrationStatus('Operazione fermata: risultano '+candidates.length+' relazioni con slide incorporate. Nessuna modifica eseguita.');
     return;
   }
   const candidate=candidates[0],archive='mark_maria_luisa_slides.zip';
@@ -1050,7 +1051,7 @@ function storageMeter(){
       e('button',{id:'migrate-slide-archive',disabled:migrationBusy,
         style:{padding:'9px 13px',borderRadius:'8px',border:'1px solid #c8a96e',
           background:'#282137',color:'#e8dcc8',cursor:'pointer'},
-        onClick:migrateExistingSlides},
+        onClick:()=>{setMigrationStatus('Richiesta ricevuta. Verifica in corso…');migrateExistingSlides().catch(err=>setMigrationStatus('ERRORE: '+(err.message||err)));}},
         '2. Verifica archivio e libera spazio Firebase'))
   );
   return div;
