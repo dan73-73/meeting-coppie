@@ -643,15 +643,6 @@ function renderAdmin() {
             if (!existing.readingBlocks?.length) throw Error("La relazione già importata non ha i passaggi preparati.");
             const slides=[];
             const langOrder=['it','fr','es','en','pt'];
-            const total=importZip.batches.length*langOrder.length;
-            let done=0;
-            const tasks=[];
-            for (const spec of importZip.batches) {
-              if (spec.afterBlock >= existing.readingBlocks.length) throw Error("Slide "+spec.number+": posizione oltre i passaggi.");
-              const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
-              slides.push(item);
-              for (const lang of langOrder) tasks.push({spec,item,lang});
-            }
             // Le immagini vengono convertite in URL incorporati nel documento.
             // Non si usa Firebase Storage (che bloccava l'importazione).
             const files=[];
@@ -732,7 +723,7 @@ function renderAdmin() {
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi, oppure uno ZIP con testi e slide nelle cinque lingue (formato PROVA). Le slide vengono caricate come immagini in Firebase Storage e mostrate tra i paragrafi, senza essere lette dal microfono. La relazione viene aggiunta, senza cancellare le altre."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi, oppure uno ZIP con testi e slide nelle cinque lingue (formato PROVA). Nella prova ZIP, le immagini vengono compresse e collegate direttamente alla relazione identica già presente, senza toccare testi o microfono."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
