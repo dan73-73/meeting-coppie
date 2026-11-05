@@ -15,10 +15,19 @@ export async function checkSlideArchive(name,expectedNumbers) {
   let promise=archives.get(url);
   if(!promise){
     promise=(async()=>{
-      const response=await fetch(url,{cache:'no-cache'});
-      if(!response.ok)throw Error('Archivio non ancora pubblicato su GitHub (HTTP '+response.status+').');
-      const zip=await JSZip.loadAsync(await response.blob());
-      return zip;
+      const raw='https://raw.githubusercontent.com/dan73-73/meeting-coppie/main/slide-archives/'+encodeURIComponent(name);
+      let lastError=null;
+      for(const address of [url,raw]){
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),12000);
+        try{
+          const response=await fetch(address,{cache:'no-cache',signal:controller.signal});
+          if(!response.ok)throw Error('HTTP '+response.status);
+          const zip=await JSZip.loadAsync(await response.blob());
+          return zip;
+        }catch(err){lastError=err;}finally{clearTimeout(timeout);}
+      }
+      throw Error('Non riesco a scaricare lo ZIP da GitHub: '+(lastError?.message||lastError));
     })();
     archives.set(url,promise);
     promise.catch(()=>archives.delete(url));
