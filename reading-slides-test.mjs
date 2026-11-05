@@ -4,7 +4,7 @@ export function slideAt(share, lang, blockIndex, createElement) {
   return slides.filter(s => Number.isInteger(s?.afterBlock) && s.afterBlock === blockIndex)
     .map(s => {
       const url = s.images?.[lang];
-      if (typeof url !== 'string' || !/^https:\/\//i.test(url)) return null;
+      if (typeof url !== 'string' || !(/^(https:\/\/|data:image\/webp;base64,)/i.test(url))) return null;
       const image = createElement('img', {
         src: url, alt: s.alt?.[lang] || ('Slide '+(s.number||'')),
         loading: 'lazy',
