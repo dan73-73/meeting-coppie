@@ -42,7 +42,15 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       }
     }
   });
+  let automaticSplitRunning=false;
   function sync(){
+    const selected=active();
+    if(!mic.active && !automaticSplitRunning && isAdmin() && getView()==='admin' &&
+       selected?.inlineSlides?.length && selected?.readingBlocks?.some(b=>(b.it||'').length>170)){
+      automaticSplitRunning=true;
+      shortenHighlightedPassages().catch(err=>message('Suddivisione automatica non riuscita: '+(err.message||err)))
+        .finally(()=>{automaticSplitRunning=false;});
+    }
     if(!mic.active)return;
     if(!isAdmin()||getView()!=='admin'){stop();return;}
     const state=getState(),share=active(),follow=state.readingFollow,cmd=state.readingRemote;
@@ -109,10 +117,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   async function shortenHighlightedPassages(){
     if(!isAdmin())throw Error('Accedi come amministratore.');
     const selected=active();
-    if(!selected)throw Error('Attiva prima la relazione di Mark e Maria Luisa.');
-    const title=selected.translations?.it?.title||'';
-    if(!title.includes('Mark')||!title.includes('Maria Luisa'))
-      throw Error('Questa prova è riservata alla relazione di Mark e Maria Luisa.');
+    if(!selected)throw Error('Attiva una relazione.');
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),s=snap.data();
       const share=(s?.shares||[]).find(x=>x.id===selected.id);
@@ -120,13 +125,13 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         throw Error('La relazione attiva è cambiata. Nessun dato modificato.');
       const old=share.readingBlocks;
       validateBlocks(old,share.translations);
-      if(!Array.isArray(share.inlineSlides)||share.inlineSlides.length!==5)
-        throw Error('Non trovo le cinque slide già inserite.');
+      if(!Array.isArray(share.inlineSlides)||!share.inlineSlides.length)
+        throw Error('Non trovo slide associate alla relazione.');
       // Ogni vecchio passaggio viene diviso in segmenti brevi corrispondenti.
       // Conserviamo tutti i caratteri e il punto di inserimento delle immagini.
       const blocks=[],endIndex=[];
       for(const block of old){
-        const parts=Math.max(1,Math.ceil((block.it||'').length/115));
+        const parts=Math.max(1,Math.ceil((block.it||'').length/90));
         const segments=Object.fromEntries(LANGS.map(lang=>[lang,shortSections(block[lang],parts)]));
         for(let i=0;i<parts;i++){
           const next=Object.fromEntries(LANGS.map(lang=>[lang,segments[lang][i]]));
@@ -154,7 +159,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       tx.update(ref,patch);
     });
     stop();refresh();
-    message('Passaggi brevi salvati. Le 5 slide sono rimaste negli stessi punti. Riavvia la lettura per verificare.');
+    message('Suddivisione automatica completata. Riavvia la lettura per verificare.');
   }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
@@ -177,7 +182,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('✂️ Evidenzia 2–3 righe (prova)',shortenHighlightedPassages),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
