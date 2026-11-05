@@ -997,6 +997,32 @@ async function deleteSection(id) {
   await saveState({ ...appState, sections:(appState.sections||[]).filter(s=>s.id!==id) });
 }
 
+// Misuratore in sola lettura: non cambia Firebase, microfono o condivisioni.
+function storageMeter(){
+  const limit=850000; // limite prudenziale dell'importazione nell'app
+  const bytes=new TextEncoder().encode(JSON.stringify(appState||{})).length;
+  const remaining=Math.max(0,limit-bytes);
+  const percent=Math.min(100,Math.round(bytes/limit*100));
+  const count=(appState.shares||[]).length;
+  const images=(appState.shares||[]).reduce((total,s)=>total+(s.inlineSlides||[])
+    .reduce((n,slide)=>n+Object.values(slide.images||{}).filter(v=>typeof v==='string'&&v.length>0).length,0),0);
+  const kb=n=>Math.round(n/1024);
+  const near=percent>=75;
+  const div=e('div',{style:{margin:'12px auto',padding:'14px 18px',maxWidth:'820px',borderRadius:'12px',
+    background:'rgba(200,169,110,.07)',border:'1px solid rgba(200,169,110,.3)',
+    color:'#e8dcc8',fontSize:'13px',lineHeight:'1.6'}},
+    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'%'),
+    e('p',{},'Occupazione stimata: '+kb(bytes)+' KB · Ancora disponibili: circa '+kb(remaining)+' KB'),
+    e('div',{style:{height:'9px',width:'100%',background:'#36313a',borderRadius:'8px',margin:'9px 0'}},
+      e('div',{style:{height:'9px',width:percent+'%',background:near?'#dba07e':'#c8a96e',borderRadius:'8px'}})),
+    e('p',{},count+' condivisioni · '+images+' immagini delle slide nelle varie lingue'),
+    e('p',{style:{color:near?'#ffbb94':'#a09080',fontSize:'12px'}},
+      near?'Attenzione: spazio quasi esaurito. Non caricare un nuovo pacchetto con molte slide senza riorganizzare i file.':
+      'Stima sul documento principale. Aggiornata automaticamente dopo ogni salvataggio o importazione.'),
+    e('p',{style:{color:'#a09080',fontSize:'11px'}},
+      'Il limite di sicurezza di 850 KB è fissato dal codice; non indica lo spazio totale del piano Firebase.'));
+  return div;
+}
 // ═══ RENDER ═══
 function render() {
   const app = document.getElementById("app");
@@ -1013,6 +1039,7 @@ function render() {
     }, "💞 Vista Coppie")
   );
   app.appendChild(demoBar);
+  if(currentView==='admin'&&adminAuth)app.appendChild(storageMeter());
   try {
     app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
   } catch (err) {
