@@ -969,11 +969,24 @@ async function deleteSection(id) {
 
 // Misuratore in sola lettura: non cambia Firebase, microfono o condivisioni.
 let migrationBusy=false;
-let migrationStatus='ZIP presente su GitHub. Migrazione non ancora confermata.';
+let migrationAutoAttempted=false;
+let migrationStatus='Controllo automatico non ancora avviato.';
 function setMigrationStatus(value){
   migrationStatus=value;
   const node=document.getElementById('slide-migration-status');
   if(node)node.textContent=value;
+}
+function attemptAutomaticMigration(){
+  if(migrationAutoAttempted||migrationBusy||!adminAuth||currentView!=='admin')return;
+  const embedded=(appState.shares||[]).some(s=>(s.inlineSlides||[])
+    .some(sl=>Object.values(sl.images||{}).some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(!embedded)return;
+  migrationAutoAttempted=true;
+  setMigrationStatus('AVVIO AUTOMATICO · Verifico ora lo ZIP GitHub, senza usare il pulsante…');
+  Promise.resolve().then(()=>migrateExistingSlides()).catch(err=>{
+    setMigrationStatus('ERRORE AUTOMATICO: '+(err.message||err));
+    console.error('Avvio migrazione',err);
+  });
 }
 async function migrateExistingSlides(){
   setMigrationStatus('Pulsante premuto. Controllo dei dati in corso…');
@@ -1027,7 +1040,7 @@ function storageMeter(){
   const div=e('div',{style:{margin:'12px auto',padding:'14px 18px',maxWidth:'820px',borderRadius:'12px',
     background:'rgba(200,169,110,.07)',border:'1px solid rgba(200,169,110,.3)',
     color:'#e8dcc8',fontSize:'13px',lineHeight:'1.6'}},
-    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'%'),
+    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'% · RIPARAZIONE AUTO 12'),
     e('p',{},'Occupazione stimata: '+kb(bytes)+' KB · Ancora disponibili: circa '+kb(remaining)+' KB'),
     e('div',{style:{height:'9px',width:'100%',background:'#36313a',borderRadius:'8px',margin:'9px 0'}},
       e('div',{style:{height:'9px',width:percent+'%',background:near?'#dba07e':'#c8a96e',borderRadius:'8px'}})),
@@ -1088,6 +1101,7 @@ onAuthStateChanged(auth, user => {
   adminAuth = !!user && user.uid === ADMIN_UID;
   reading.sync();
   render();
+  attemptAutomaticMigration();
 });
 
 await initState();
@@ -1108,6 +1122,7 @@ subscribeState(state => {
     previous.sections?.length===appState.sections?.length;
   if(sameContext && reading.updateHighlight(after.shareId,after.index))return;
   render();
+  attemptAutomaticMigration();
 });
 </script>
 </body>
