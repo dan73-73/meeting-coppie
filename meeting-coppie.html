@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=highlight-optimization-v6';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=fast-progress-v7';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -1031,9 +1031,19 @@ onAuthStateChanged(auth, user => {
 });
 
 await initState();
+let fastProgress=null;
+function applyFastProgress(){
+  const r=appState.readingFollow,p=fastProgress;
+  if(!r||!p||p.shareId!==r.shareId||p.session!==r.session||
+      p.revision!==(r.revision||0)||!Number.isInteger(p.index))return false;
+  if(p.index<(r.index??-1))return false;
+  appState.readingFollow={...r,index:p.index};
+  return true;
+}
 subscribeState(state => {
   const previous=appState;
   appState={...DEFAULT_STATE,...state};
+  applyFastProgress();
   reading.sync();
   const before=previous?.readingFollow,after=appState.readingFollow;
   const sameContext=currentView==='couple' && coupleLang && before && after &&
@@ -1041,10 +1051,23 @@ subscribeState(state => {
     before.revision===after.revision && before.index!==after.index &&
     previous.activeShareId===appState.activeShareId &&
     previous.displayMode===appState.displayMode &&
-    JSON.stringify(previous.shares)===JSON.stringify(appState.shares) &&
-    JSON.stringify(previous.sections)===JSON.stringify(appState.sections);
+    previous.shares===appState.shares;
+  // Solo l'evidenziazione si muove; le slide rimangono caricate.
   if(sameContext && reading.updateHighlight(after.shareId,after.index))return;
   render();
+});
+onSnapshot(doc(firestore,'state','readingProgress'),snap=>{
+  if(!snap.exists())return;
+  const next=snap.data(),r=appState.readingFollow;
+  if(!r||next.session!==r.session||next.shareId!==r.shareId||
+     next.revision!==(r.revision||0)||!Number.isInteger(next.index))return;
+  if(next.index<(r.index??-1))return;
+  fastProgress=next;
+  if(!applyFastProgress())return;
+  if(currentView==='couple'&&coupleLang)
+    reading.updateHighlight(next.shareId,next.index);
+},err=>{
+  console.warn('Canale rapido della lettura non disponibile; rimane attivo quello tradizionale.',err);
 });
 </script>
 </body>

@@ -2,10 +2,12 @@ import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs';
 import {LANGS,suggestBlocks,validateBlocks,locatePassage} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
-import {doc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {doc,runTransaction,setDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
   const ref=doc(db,'state','main');
+  const progressRef=doc(db,'state','readingProgress');
+  let fastCursor=null;
   const names={it:'Italiano',en:'English',fr:'Français',es:'Español',pt:'Português'};
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
@@ -36,7 +38,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       if(!valid(live,share))return;
       for(let i=event.resultIndex;i<event.results.length;i++){
         const words=event.results[i][0].transcript,combined=(tail+' '+words).trim();
-        let index=locatePassage(words,live.blocks,source,Math.max(0,live.index));
+        let index=locatePassage(words,live.blocks,source,Math.max(0,live.index,fastCursor?.session===live.session&&fastCursor?.revision===(live.revision||0)?fastCursor.index:0));
         if(index===null)index=locatePassage(combined,live.blocks,source,Math.max(0,live.index));
         if(index!==null)queue(index);
         if(event.results[i].isFinal)tail=combined.split(/\\s+/).slice(-12).join(' ');
@@ -63,7 +65,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||getView()!=='admin'){stop();return;}
     const state=getState(),follow=state.readingFollow,cmd=state.readingRemote;
     const changed=session!==follow?.session;
-    if(changed){session=follow?.session||null;tail='';pending=null;}
+    if(changed){session=follow?.session||null;tail='';pending=null;fastCursor=null;}
+    if(fastCursor && follow && (fastCursor.session!==follow.session||fastCursor.revision!==(follow.revision||0)))fastCursor=null;
     const language=spokenLanguage(share);
     if(language&&language!==source){source=language;mic.setLanguage(locales[source]);}
     if(cmd?.id&&cmd.id!==lastRemoteCommand){
@@ -113,32 +116,41 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     pending=null;tail='';const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
     await runTransaction(db,async tx=>{const snap=await tx.get(ref),now=snap.data(),r=now?.readingFollow;if(now?.activeShareId!==share.id||r?.session!==record.session)throw Error('La condivisione attiva è cambiata.');tx.update(ref,{readingFollow:{...r,index:bounded,revision:(r.revision||0)+(manual?1:0)}});});
   }
-  // Consegna l'ultimo passaggio riconosciuto, senza accumulare invii intermedi.
-  // Il controllo sessione/revisione nella transazione protegge i comandi manuali.
+  // Il numero del passaggio è trasmesso in un documento leggero, separato
+  // dai testi e dalle slide. Non inviare più l'intera relazione per ogni frase.
   function queue(index){
-    const r=getState().readingFollow;
-    if(!r||index<=r.index)return;
-    if(pending?.session===r.session&&pending.revision===(r.revision||0))
-      index=Math.max(index,pending.index);
-    pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};
-    if(!timer&&!sending)timer=setTimeout(flush,60);
+    const r=getState().readingFollow;if(!r)return;
+    const revision=r.revision||0;
+    const current=fastCursor?.session===r.session&&fastCursor.revision===revision?fastCursor.index:r.index;
+    if(index<=current)return;
+    fastCursor={shareId:r.shareId,session:r.session,revision,index};
+    pending={...fastCursor};
+    if(!timer&&!sending)timer=setTimeout(flush,25);
   }
   async function flush(){
     timer=null;
     if(sending||!pending)return;
     const item=pending;pending=null;
     if(!mic.active||mic.paused||!isAdmin())return;
+    const r=getState().readingFollow;
+    if(r?.session!==item.session||(r.revision||0)!==item.revision)return;
     sending=true;
     try{
-      await runTransaction(db,async tx=>{
-        const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;
-        if(s?.activeShareId!==item.shareId||(s.displayMode||'one')!=='one'||
-           r?.session!==item.session||(r.revision||0)!==item.revision)return;
-        // Mai tornare indietro per via di un aggiornamento arrivato in ritardo.
-        if(item.index>(r.index??-1))tx.update(ref,{readingFollow:{...r,index:item.index}});
-      });
+      await setDoc(progressRef,{...item,updatedAt:Date.now()});
     }catch(err){
-      message('Sincronizzazione temporaneamente non disponibile: '+(err.message||err));
+      message('Canale veloce non disponibile: '+(err.message||err));
+      // Ripiego sicuro sul canale precedente se le regole Firebase
+      // impediscono di scrivere il documento di avanzamento.
+      try{
+        await runTransaction(db,async tx=>{
+          const snap=await tx.get(ref),s=snap.data(),live=s?.readingFollow;
+          if(s?.activeShareId===item.shareId&&live?.session===item.session&&
+             (live.revision||0)===item.revision&&item.index>(live.index??-1))
+            tx.update(ref,{readingFollow:{...live,index:item.index}});
+        });
+      }catch(fallbackError){
+        message('Sincronizzazione non disponibile: '+(fallbackError.message||fallbackError));
+      }
     }finally{
       sending=false;
       if(pending&&!timer)timer=setTimeout(flush,0);
@@ -149,7 +161,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||!valid(record,share))throw Error('Prepara i passaggi della condivisione attiva.');
     if(needsShortening(share))throw Error('La suddivisione automatica non è completata. Controlla il messaggio sotto i pulsanti.');
     const lang=spokenLanguage(share);if(lang)source=lang;
-    stop();session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
+    stop();fastCursor=null;session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
     tail='';requestedPause=false;mic.start(locales[source]);
   }
   async function shortenHighlightedPassages(){
