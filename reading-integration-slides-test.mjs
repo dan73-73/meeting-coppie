@@ -47,8 +47,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   let automaticSplitRunning=false;
   function needsShortening(share) {
     return share?.readingSegmentationVersion!==2 && Array.isArray(share?.inlineSlides) && share.inlineSlides.length>0 &&
-      Array.isArray(share?.readingBlocks) &&
-      share.readingBlocks.some(b=>(b.it||'').length>170);
+      Array.isArray(share?.readingBlocks) && share.readingBlocks.length>0;
   }
   function sync(){
     const share=active();
