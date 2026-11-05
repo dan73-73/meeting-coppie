@@ -557,7 +557,8 @@ function renderAdmin() {
         let parsed;
         importZip = null;
         if (/\.zip$/i.test(file.name)) {
-          const zip = await JSZip.loadAsync(file);
+          if(!/^[a-zA-Z0-9_-]+\\.zip$/.test(file.name))throw Error('Nome ZIP non valido: usare solo lettere, numeri, - e _.');
+           const zip = await JSZip.loadAsync(file);
           const entries = Object.keys(zip.files);
           const find = basename => entries.find(p => p.split('/').pop().toLowerCase()===basename.toLowerCase());
           const jsonEntry = find('IMPORTA_TESTI_5_LINGUE.json');
@@ -579,7 +580,7 @@ function renderAdmin() {
             if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
             return {number:p.slide,afterBlock:p.afterBlock,images};
           });
-          importZip = {zip,batches};
+          importZip = {zip,batches,name:file.name};
         } else {
           parsed = JSON.parse(await file.text());
         }
@@ -645,48 +646,16 @@ function renderAdmin() {
               throw Error("Esiste già una relazione con lo stesso titolo ma testi diversi: nessuna copia creata.");
             const originalBlocks=existing?.readingBlocks||target.readingBlocks;
             if (!originalBlocks?.length) throw Error("Le cinque lingue non hanno passaggi corrispondenti. Controlla i testi del pacchetto.");
-            const slides=[];
+            // Le immagini risiedono nello ZIP pubblicato su GitHub Pages.
+            // Nel database rimangono solo gli indici e il nome archivio.
             const langOrder=['it','fr','es','en','pt'];
-            // Le immagini vengono convertite in URL incorporati nel documento.
-            // Non si usa Firebase Storage (che bloccava l'importazione).
-            const files=[];
-            for (const spec of importZip.batches) {
-              if (spec.afterBlock >= originalBlocks.length) throw Error("Posizione slide non valida: "+spec.number);
-              const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
-              slides.push(item);
-              for (const lang of langOrder) {
-                const bytes=await importZip.zip.file(spec.images[lang]).async('blob');
-                files.push({item,lang,blob:bytes});
-              }
-            }
-            const compressImage=async(blob,width,quality)=>{
-              const bitmap=await createImageBitmap(blob);
-              try{
-                const scale=Math.min(1,width/bitmap.width);
-                const canvas=document.createElement('canvas');
-                canvas.width=Math.max(1,Math.round(bitmap.width*scale));
-                canvas.height=Math.max(1,Math.round(bitmap.height*scale));
-                const ctx=canvas.getContext('2d');
-                if(!ctx) throw Error('Impossibile elaborare le immagini sul computer.');
-                ctx.fillStyle='#ffffff';
-                ctx.fillRect(0,0,canvas.width,canvas.height);
-                ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
-                return canvas.toDataURL('image/webp',quality);
-              }finally{bitmap.close();}
-            };
-            let size=0;
-            // Regola automaticamente la dimensione per il limite di Firestore.
-            for(const width of [1100,900,720,600]){
-              let done=0;size=0;
-              for(const file of files){
-                file.item.images[file.lang]=await compressImage(file.blob,width,.70);
-                size+=file.item.images[file.lang].length;
-                confirmBtn.textContent='Preparazione slide: '+(++done)+' di '+files.length;
-              }
-              if(size<=500000)break;
-            }
-            if(size>500000) throw Error('Immagini troppo grandi per il salvataggio sicuro. Nessuna relazione modificata.');
-            confirmBtn.textContent='Collegamento delle 25 immagini alla relazione…';
+            confirmBtn.textContent='Verifica archivio ZIP su GitHub…';
+            await checkSlideArchive(importZip.name,importZip.batches.map(s=>s.number));
+            const slides=importZip.batches.map(spec=>{
+              if(spec.afterBlock>=originalBlocks.length)throw Error('Posizione slide non valida: '+spec.number);
+              return {number:spec.number,afterBlock:spec.afterBlock,images:{}};
+            });
+            confirmBtn.textContent='Collegamento slide senza appesantire Firebase…';
             // Aggiorna solo le immagini della relazione esistente con dati freschi.
             // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
             await runTransaction(firestore, async tx => {
@@ -707,7 +676,7 @@ function renderAdmin() {
               if(slides.some(s=>s.afterBlock>=current.readingBlocks.length))
                 throw Error("Una posizione slide supera il numero di passaggi attuali.");
               const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
-              const updated={...current,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks,readingSegmentationVersion:2};
+              const updated={...current,inlineSlides:refined.inlineSlides,slideArchive:importZip.name,readingBlocks:refined.blocks,readingSegmentationVersion:2};
               const shares=matches.length
                 ? live.shares.map(s=>s.id===current.id?updated:s)
                 : [...(live.shares||[]),updated];
@@ -1042,7 +1011,7 @@ function storageMeter(){
   const percent=Math.min(100,Math.round(bytes/limit*100));
   const count=(appState.shares||[]).length;
   const images=(appState.shares||[]).reduce((total,s)=>total+(s.inlineSlides||[])
-    .reduce((n,slide)=>n+Object.values(slide.images||{}).filter(v=>typeof v==='string'&&v.length>0).length,0),0);
+    .reduce((n,slide)=>n+(['it','en','fr','es','pt'].filter(l=>s.slideArchive||Boolean(slide.images?.[l])).length),0),0);
   const kb=n=>Math.round(n/1024);
   const near=percent>=75;
   const div=e('div',{style:{margin:'12px auto',padding:'14px 18px',maxWidth:'820px',borderRadius:'12px',
