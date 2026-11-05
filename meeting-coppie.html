@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=complete-sentences-v4';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=highlight-optimization-v6';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -1031,7 +1031,21 @@ onAuthStateChanged(auth, user => {
 });
 
 await initState();
-subscribeState(state => { appState = {...DEFAULT_STATE, ...state}; reading.sync(); render(); });
+subscribeState(state => {
+  const previous=appState;
+  appState={...DEFAULT_STATE,...state};
+  reading.sync();
+  const before=previous?.readingFollow,after=appState.readingFollow;
+  const sameContext=currentView==='couple' && coupleLang && before && after &&
+    before.shareId===after.shareId && before.session===after.session &&
+    before.revision===after.revision && before.index!==after.index &&
+    previous.activeShareId===appState.activeShareId &&
+    previous.displayMode===appState.displayMode &&
+    JSON.stringify(previous.shares)===JSON.stringify(appState.shares) &&
+    JSON.stringify(previous.sections)===JSON.stringify(appState.sections);
+  if(sameContext && reading.updateHighlight(after.shareId,after.index))return;
+  render();
+});
 </script>
 </body>
 </html>
