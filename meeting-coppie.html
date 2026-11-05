@@ -20,7 +20,8 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=reading-field-update-v8';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=archive-views-v9';
+import {checkSlideArchive} from './reading-slides-test.mjs?v=static-archive-v1';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -998,6 +999,42 @@ async function deleteSection(id) {
 }
 
 // Misuratore in sola lettura: non cambia Firebase, microfono o condivisioni.
+let migrationBusy=false;
+async function migrateExistingSlides(){
+  if(migrationBusy)return;
+  const candidates=(appState.shares||[]).filter(s=>
+    (s.inlineSlides||[]).some(sl=>Object.values(sl.images||{})
+      .some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(candidates.length!==1){
+    alert('Per sicurezza la migrazione automatica richiede una sola relazione con slide incorporate. Nessun dato modificato.');
+    return;
+  }
+  const candidate=candidates[0],archive='mark_maria_luisa_slides.zip';
+  migrationBusy=true;
+  const btn=document.getElementById('migrate-slide-archive');
+  if(btn){btn.disabled=true;btn.textContent='Verifica ZIP pubblicato su GitHub…';}
+  try{
+    await checkSlideArchive(archive,candidate.inlineSlides.map(s=>s.number));
+    await runTransaction(firestore,async tx=>{
+      const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
+      if(!snap.exists())throw Error('Documento principale non disponibile.');
+      const state=snap.data(),share=(state.shares||[]).find(s=>s.id===candidate.id);
+      if(!share||share.inlineSlides?.length!==candidate.inlineSlides.length)
+        throw Error('La relazione è cambiata. Nessun dato eliminato.');
+      const slides=share.inlineSlides.map(s=>({...s,images:{}}));
+      const update={...share,inlineSlides:slides,slideArchive:archive};
+      const shares=state.shares.map(s=>s.id===share.id?update:s);
+      tx.update(ref,{shares});
+    });
+    alert('Operazione riuscita! Le 25 slide ora sono collegate al file GitHub. I testi e il microfono sono invariati.');
+  }catch(err){
+    alert('Non ho liberato spazio: '+(err.message||err)+
+      '\\nPrima carica '+archive+' nella cartella slide-archives su GitHub.');
+  }finally{
+    migrationBusy=false;
+    render();
+  }
+}
 function storageMeter(){
   const limit=850000; // limite prudenziale dell'importazione nell'app
   const bytes=new TextEncoder().encode(JSON.stringify(appState||{})).length;
@@ -1021,6 +1058,21 @@ function storageMeter(){
       'Stima sul documento principale. Aggiornata automaticamente dopo ogni salvataggio o importazione.'),
     e('p',{style:{color:'#a09080',fontSize:'11px'}},
       'Il limite di sicurezza di 850 KB è fissato dal codice; non indica lo spazio totale del piano Firebase.'));
+  const needsMigration=(appState.shares||[]).some(s=>(s.inlineSlides||[]).some(sl=>
+    Object.values(sl.images||{}).some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(needsMigration)div.append(
+    e('p',{style:{color:'#e8dcc8',marginTop:'9px'}},
+      'Soluzione senza abbonamento: carica il file mark_maria_luisa_slides.zip in GitHub, poi collega le slide.'),
+    e('a',{href:'https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives',
+      target:'_blank',rel:'noopener noreferrer',style:{color:'#e8c87a'}},
+      '1. Apri GitHub per caricare lo ZIP delle slide'),
+    e('div',{style:{marginTop:'8px'}},
+      e('button',{id:'migrate-slide-archive',disabled:migrationBusy,
+        style:{padding:'9px 13px',borderRadius:'8px',border:'1px solid #c8a96e',
+          background:'#282137',color:'#e8dcc8',cursor:'pointer'},
+        onClick:migrateExistingSlides},
+        '2. Verifica archivio e libera spazio Firebase'))
+  );
   return div;
 }
 // ═══ RENDER ═══
