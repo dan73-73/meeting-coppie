@@ -643,21 +643,45 @@ function renderAdmin() {
             if (!existing.readingBlocks?.length) throw Error("La relazione già importata non ha i passaggi preparati.");
             const slides=[];
             const langOrder=['it','fr','es','en','pt'];
-            let done=0,total=importZip.batches.length*langOrder.length;
+            const total=importZip.batches.length*langOrder.length;
+            let done=0;
+            const tasks=[];
             for (const spec of importZip.batches) {
               if (spec.afterBlock >= existing.readingBlocks.length) throw Error("Slide "+spec.number+": posizione oltre i passaggi.");
-              const images={};
-              for (const lang of langOrder) {
-                const filename=spec.images[lang];
-                const bytes=await importZip.zip.file(filename).async('uint8array');
-                const place=storageRef(storage,'meeting-slides/'+existing.id+'/'+lang+'/slide_'+String(spec.number).padStart(2,'0')+'.webp');
-                await uploadBytes(place,bytes,{contentType:'image/webp'});
-                images[lang]=await getDownloadURL(place);
-                importProgress='Slide caricate: '+(++done)+' di '+total;
-                confirmBtn.textContent=importProgress;
-              }
-              slides.push({number:spec.number,afterBlock:spec.afterBlock,images});
+              const item={number:spec.number,afterBlock:spec.afterBlock,images:{}};
+              slides.push(item);
+              for (const lang of langOrder) tasks.push({spec,item,lang});
             }
+            // Carica poche immagini contemporaneamente; se la rete cade, riprova automaticamente.
+            // Nessuna relazione viene modificata finché TUTTE le immagini non risultano caricate.
+            const send=async ({spec,item,lang})=>{
+              const filename=spec.images[lang];
+              const bytes=await importZip.zip.file(filename).async('uint8array');
+              const place=storageRef(storage,'meeting-slides/'+existing.id+'/'+lang+'/slide_'+String(spec.number).padStart(2,'0')+'.webp');
+              for(let attempt=1;attempt<=3;attempt++){
+                try{
+                  await uploadBytes(place,bytes,{contentType:'image/webp'});
+                  item.images[lang]=await getDownloadURL(place);
+                  importProgress='Slide caricate: '+(++done)+' di '+total;
+                  confirmBtn.textContent=importProgress;
+                  return;
+                }catch(err){
+                  if(attempt===3 || err?.code==='storage/unauthorized' || err?.code==='storage/unauthenticated')
+                    throw Error("Blocco su slide "+spec.number+" ("+lang+"): "+(err?.message||err));
+                  confirmBtn.textContent='Connessione interrotta: tentativo '+(attempt+1)+' di 3 · '+lang+' '+spec.number;
+                  await new Promise(resolve=>setTimeout(resolve,1000*attempt));
+                }
+              }
+            };
+            let next=0;
+            const worker=async()=>{
+              while(next<tasks.length){
+                const task=tasks[next++];
+                await send(task);
+              }
+            };
+            await Promise.all([worker(),worker(),worker()]);
+            confirmBtn.textContent='25 immagini caricate. Collegamento alla relazione…';
             // Aggiorna solo le immagini della relazione esistente con dati freschi.
             // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
             await runTransaction(firestore, async tx => {
