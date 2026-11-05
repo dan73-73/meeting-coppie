@@ -113,8 +113,37 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     pending=null;tail='';const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
     await runTransaction(db,async tx=>{const snap=await tx.get(ref),now=snap.data(),r=now?.readingFollow;if(now?.activeShareId!==share.id||r?.session!==record.session)throw Error('La condivisione attiva è cambiata.');tx.update(ref,{readingFollow:{...r,index:bounded,revision:(r.revision||0)+(manual?1:0)}});});
   }
-  function queue(index){const r=getState().readingFollow;if(!r||index===r.index)return;pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};if(!timer)timer=setTimeout(flush,300);}
-  async function flush(){timer=null;if(sending||!pending)return;const item=pending;pending=null;if(!mic.active||mic.paused||!isAdmin())return;sending=true;try{await runTransaction(db,async tx=>{const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;if(s?.activeShareId===item.shareId&&(s.displayMode||'one')==='one'&&r?.session===item.session&&(r.revision||0)===item.revision )tx.update(ref,{readingFollow:{...r,index:item.index}});});}catch(err){message('Sincronizzazione temporaneamente non disponibile: '+(err.message||err));}finally{sending=false;if(pending&&!timer)timer=setTimeout(flush,300);}}
+  // Consegna l'ultimo passaggio riconosciuto, senza accumulare invii intermedi.
+  // Il controllo sessione/revisione nella transazione protegge i comandi manuali.
+  function queue(index){
+    const r=getState().readingFollow;
+    if(!r||index<=r.index)return;
+    if(pending?.session===r.session&&pending.revision===(r.revision||0))
+      index=Math.max(index,pending.index);
+    pending={index,session:r.session,revision:r.revision||0,shareId:r.shareId};
+    if(!timer&&!sending)timer=setTimeout(flush,60);
+  }
+  async function flush(){
+    timer=null;
+    if(sending||!pending)return;
+    const item=pending;pending=null;
+    if(!mic.active||mic.paused||!isAdmin())return;
+    sending=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(ref),s=snap.data(),r=s?.readingFollow;
+        if(s?.activeShareId!==item.shareId||(s.displayMode||'one')!=='one'||
+           r?.session!==item.session||(r.revision||0)!==item.revision)return;
+        // Mai tornare indietro per via di un aggiornamento arrivato in ritardo.
+        if(item.index>(r.index??-1))tx.update(ref,{readingFollow:{...r,index:item.index}});
+      });
+    }catch(err){
+      message('Sincronizzazione temporaneamente non disponibile: '+(err.message||err));
+    }finally{
+      sending=false;
+      if(pending&&!timer)timer=setTimeout(flush,0);
+    }
+  }
   function start(){
     const share=active(),record=getState().readingFollow;
     if(!isAdmin()||!valid(record,share))throw Error('Prepara i passaggi della condivisione attiva.');
