@@ -20,8 +20,8 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=auto-reading-v3';
-import {refineReadingForSlides} from './reading-slide-segments.mjs';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=complete-sentences-v4';
+import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
 const firebaseConfig = {
@@ -706,7 +706,7 @@ function renderAdmin() {
               if(slides.some(s=>s.afterBlock>=current.readingBlocks.length))
                 throw Error("Una posizione slide supera il numero di passaggi attuali.");
               const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
-              const updated={...current,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks};
+              const updated={...current,inlineSlides:refined.inlineSlides,readingBlocks:refined.blocks,readingSegmentationVersion:2};
               const shares=matches.length
                 ? live.shares.map(s=>s.id===current.id?updated:s)
                 : [...(live.shares||[]),updated];
