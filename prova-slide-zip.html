@@ -631,20 +631,26 @@ function renderAdmin() {
         try {
           const stamp = Date.now();
           const newShares = importItems.map((item, idx) => ({...item, id:"s"+stamp+"-"+idx}));
+          let existing=null;
           if (importZip) {
-            if (newShares.length !== 1) throw Error("Per la prova con slide, lo ZIP deve contenere una sola relazione.");
+            if (newShares.length !== 1) throw Error("Il pacchetto prova deve contenere una sola relazione.");
             const target = newShares[0];
-            if (!target.readingBlocks?.length) throw Error("Per collegare le slide servono passaggi sincronizzati nelle cinque lingue.");
+            existing=(appState.shares||[]).find(s =>
+              s.translations?.it?.title===target.translations.it.title &&
+              ['it','fr','es','en','pt'].every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
+            );
+            if (!existing) throw Error("Non trovo la relazione identica già importata. Per sicurezza non creo un duplicato.");
+            if (!existing.readingBlocks?.length) throw Error("La relazione già importata non ha i passaggi preparati.");
             const slides=[];
             const langOrder=['it','fr','es','en','pt'];
             let done=0,total=importZip.batches.length*langOrder.length;
             for (const spec of importZip.batches) {
-              if (spec.afterBlock >= target.readingBlocks.length) throw Error("Slide "+spec.number+": posizione oltre i passaggi.");
+              if (spec.afterBlock >= existing.readingBlocks.length) throw Error("Slide "+spec.number+": posizione oltre i passaggi.");
               const images={};
               for (const lang of langOrder) {
                 const filename=spec.images[lang];
                 const bytes=await importZip.zip.file(filename).async('uint8array');
-                const place=storageRef(storage,'meeting-slides/'+target.id+'/'+lang+'/slide_'+String(spec.number).padStart(2,'0')+'.webp');
+                const place=storageRef(storage,'meeting-slides/'+existing.id+'/'+lang+'/slide_'+String(spec.number).padStart(2,'0')+'.webp');
                 await uploadBytes(place,bytes,{contentType:'image/webp'});
                 images[lang]=await getDownloadURL(place);
                 importProgress='Slide caricate: '+(++done)+' di '+total;
@@ -652,20 +658,19 @@ function renderAdmin() {
               }
               slides.push({number:spec.number,afterBlock:spec.afterBlock,images});
             }
-            target.inlineSlides=slides;
+            const updatedShares=(appState.shares||[]).map(share=>share.id===existing.id?{...share,inlineSlides:slides}:share);
+            await saveState({...appState,shares:updatedShares});
+          } else {
+            await saveState({...appState,shares:[...(appState.shares||[]),...newShares]});
           }
-          await saveState({ ...appState, shares:[...(appState.shares||[]), ...newShares] });
           const n = newShares.length;
-          importItems = []; importError = "";importZip=null; adminTab = "list"; render();
-          alert(n+" condivision"+(n===1?"e":"i")+" importat"+(n===1?"a":"e")+" con successo. Le condivisioni già presenti non sono state modificate.");
+          importItems=[];importError="";importZip=null;adminTab="list";render();
+          alert(existing?"Le 5 slide nelle 5 lingue sono state collegate alla relazione già presente, senza duplicarla.":"Importazione di "+n+" condivisioni completata.");
         } catch(err) {
           importError=err?.message||String(err);
           confirmBtn.textContent='⚠️ Errore: '+importError+' · riprova';
           confirmBtn.disabled=false;
         } finally {importBusy=false;}
-        const n = newShares.length;
-        importItems = []; importError = ""; adminTab = "list"; render();
-        alert(n+" condivision"+(n===1?"e":"i")+" importat"+(n===1?"a":"e")+" con successo. Le condivisioni già presenti non sono state modificate.");
       }
     }, "✅ Conferma importazione ("+importItems.length+")") : null;
 
