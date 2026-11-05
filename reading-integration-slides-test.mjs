@@ -219,15 +219,15 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   let lastScroll='';
   function body(share,lang,content){
     const r=getState().readingFollow;const style={fontSize:'16px',lineHeight:'1.8',color:'#c8b89a',marginBottom:'16px',whiteSpace:'pre-wrap'};
-    if(!valid(r,share))return e('p',{style},content?.body||'');
+    if(!valid(r,share)&&!share?.readingBlocks?.length)return e('p',{style},content?.body||'');
     const root=e('div',{style});
     // Le slide sono elementi visivi, mai aggiunti ai readingBlocks riconosciuti dal microfono.
     root.append(...slideAt(share,lang,-1,e));
-    r.blocks.forEach((b,i)=>{
-      root.append(e('span',{...(i===r.index?{'data-reading-active':'true'}:{}),style:i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang]));
+    (valid(r,share)?r.blocks:share.readingBlocks).forEach((b,i)=>{
+      root.append(e('span',{...(valid(r,share)&&i===r.index?{'data-reading-active':'true'}:{}),style:valid(r,share)&&i===r.index&&r.blocks.length>1?{background:'rgba(232,200,117,.38)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},b[lang]));
       root.append(...slideAt(share,lang,i,e));
     });
-    const key=r.session+'|'+r.index+'|'+lang+'|'+getView();if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
+    const key=valid(r,share)?r.session+'|'+r.index+'|'+lang+'|'+getView():lastScroll;if(key!==lastScroll){lastScroll=key;requestAnimationFrame(()=>{if(root.isConnected)root.querySelector('[data-reading-active]')?.scrollIntoView({behavior:'smooth',block:'center'});});}
     return root;
   }
   window.addEventListener('pagehide',stop);
