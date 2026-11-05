@@ -557,7 +557,7 @@ function renderAdmin() {
         let parsed;
         importZip = null;
         if (/\.zip$/i.test(file.name)) {
-          if(!/^[a-zA-Z0-9_-]+\\.zip$/.test(file.name))throw Error('Nome ZIP non valido: usare solo lettere, numeri, - e _.');
+          if(!/^[a-zA-Z0-9_-]+\.zip$/.test(file.name))throw Error('Nome ZIP non valido: usare solo lettere, numeri, - e _.');
            const zip = await JSZip.loadAsync(file);
           const entries = Object.keys(zip.files);
           const find = basename => entries.find(p => p.split('/').pop().toLowerCase()===basename.toLowerCase());
@@ -580,7 +580,7 @@ function renderAdmin() {
             if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
             return {number:p.slide,afterBlock:p.afterBlock,images};
           });
-          importZip = {zip,batches,name:file.name.replace(/\\.zip$/i,'_slides.zip')};
+          importZip = {zip,batches,name:file.name.replace(/\.zip$/i,'_slides.zip')};
         } else {
           parsed = JSON.parse(await file.text());
         }
