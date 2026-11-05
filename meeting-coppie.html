@@ -1066,6 +1066,7 @@ onSnapshot(doc(firestore,'state','readingProgress'),snap=>{
   if(!applyFastProgress())return;
   if(currentView==='couple'&&coupleLang)
     reading.updateHighlight(next.shareId,next.index);
+  else if(currentView==='admin')render();
 },err=>{
   console.warn('Canale rapido della lettura non disponibile; rimane attivo quello tradizionale.',err);
 });
