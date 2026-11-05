@@ -580,7 +580,7 @@ function renderAdmin() {
             if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
             return {number:p.slide,afterBlock:p.afterBlock,images};
           });
-          importZip = {zip,batches,name:file.name};
+          importZip = {zip,batches,name:file.name.replace(/\\.zip$/i,'_slides.zip')};
         } else {
           parsed = JSON.parse(await file.text());
         }
@@ -705,7 +705,7 @@ function renderAdmin() {
 
     bodyContent = e("div", { style:{maxWidth:"720px"} },
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Importa condivisioni"),
-      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi oppure uno ZIP con testi e slide nelle cinque lingue. Se la relazione esiste già, le slide vengono collegate senza creare duplicati; altrimenti la relazione viene aggiunta. I passaggi brevi sono preparati automaticamente senza modificare il microfono."),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Importa un JSON con i soli testi oppure lo ZIP completo con testi e slide nelle cinque lingue. Prima pubblica su GitHub solo lo ZIP delle immagini, con lo stesso nome seguito da _slides.zip. Le relazioni e le traduzioni rimangono private nel database; le slide devono essere adatte alla pubblicazione sul sito."),
       fileInput,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
