@@ -74,29 +74,32 @@ export function punctuationSections(text,count){
   for(let i=1;i<count;i++){
     const remaining=count-i;
     const ideal=Math.round(length*i/count);
-    const lower=Math.max(start+30,ideal-60);
-    const upper=Math.min(length-remaining*28,ideal+60);
-    let best=-1,score=Infinity;
+    const lower=Math.max(start+35,ideal-78);
+    const upper=Math.min(length-remaining*30,ideal+78);
+    let sentence=null,clause=null,space=null;
     for(let pos=lower;pos<=upper;pos++){
-      if(!/\\s/u.test(str[pos-1]||''))continue;
+      if(!/\s/u.test(str[pos-1]||''))continue;
       const before=str.slice(start,pos).trimEnd();
+      if(!before.trim())continue;
       const last=before.slice(-3);
-      // Punctuation remains in the highlighted passage, not the next one.
-      const sentence=/[.!?][”’"»)]?$/u.test(last);
-      const clause=/[,;:][”’"»)]?$/u.test(last);
-      const penalty=sentence?0:clause?14:65;
-      const distance=Math.abs(pos-ideal);
+      const dist=Math.abs(pos-ideal);
       const nextLen=length-pos;
-      const value=distance+penalty+(nextLen/remaining<32?200:0);
-      if(value<score){best=pos;score=value;}
+      if(nextLen/remaining<30)continue;
+      if(/[.!?][”’"»)]?$/u.test(last)){
+        if(!sentence||dist<sentence.dist)sentence={pos,dist};
+      }else if(/[,;:][”’"»)]?$/u.test(last)){
+        if(!clause||dist<clause.dist)clause={pos,dist};
+      }else if(!space||dist<space.dist)space={pos,dist};
     }
-    if(best<0){
-      // Fallback only for an unusually long, punctuation-free stretch.
-      const min=Math.max(start+1,Math.min(length-remaining,ideal));
-      best=min;
-      for(let d=0;d<60;d++){
-        if(best+d<length-remaining&&/\\s/u.test(str[best+d-1]||'')){best+=d;break;}
-        if(best-d>start&&/\\s/u.test(str[best-d-1]||'')){best-=d;break;}
+    let best=(sentence||clause||space)?.pos;
+    if(best==null){
+      // Fallback: use a word boundary even when no punctuation is nearby.
+      const limit=Math.min(length-remaining,Math.max(start+1,ideal));
+      best=limit;
+      for(let delta=0;delta<length;delta++){
+        const right=limit+delta,left=limit-delta;
+        if(right<length-remaining&&/\s/u.test(str[right-1]||'')){best=right;break;}
+        if(left>start&&/\s/u.test(str[left-1]||'')){best=left;break;}
       }
     }
     cuts.push(best);
