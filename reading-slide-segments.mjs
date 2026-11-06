@@ -1,4 +1,4 @@
-import {LANGS,validateBlocks,punctuationSections} from './reading-follow.mjs?v=punctuation-20261106a';
+import {LANGS,validateBlocks,punctuationSections,suggestBlocks,shortenLongReadingBlocks} from './reading-follow.mjs?v=punctuation-20261106a';
 
 // Le slide delimitano le sezioni. I passaggi della lettura vengono suddivisi
 // solo sui confini delle frasi, senza alterare neppure uno spazio dei testi.
@@ -61,4 +61,24 @@ export function refineReadingForSlides(oldBlocks, inlineSlides, translations) {
   validateBlocks(blocks,translations);
   const slides=inlineSlides.map(s=>({...s,afterBlock:s.afterBlock===-1?-1:mapping.get(s.afterBlock)}));
   return {blocks,inlineSlides:slides,changed:true};
+}
+
+// GitHub: recompute each slide location after forming short synchronized passages.
+// The imported metadata stores the original paragraph positions only.
+export function preparePublicSlideReading(translations,positions){
+  const original=suggestBlocks(translations).blocks;
+  validateBlocks(original,translations);
+  const incoming=positions.map(p=>({number:p.number,afterBlock:p.afterBlock,images:{}}));
+  const refined=refineReadingForSlides(original,incoming,translations);
+  const blocks=[],ends=[];
+  for(const block of refined.blocks){
+    const one=Object.fromEntries(LANGS.map(l=>[l,{body:block[l]}]));
+    const pieces=shortenLongReadingBlocks([block],one,105);
+    blocks.push(...pieces);
+    ends.push(blocks.length-1);
+  }
+  const inlineSlides=refined.inlineSlides.map(slide=>({...slide,afterBlock:slide.afterBlock<0?-1:ends[slide.afterBlock]}));
+  validateBlocks(blocks,translations);
+  if(inlineSlides.some(s=>s.afterBlock>=blocks.length))throw Error('Slide fuori testo.');
+  return {readingBlocks:blocks,inlineSlides};
 }
