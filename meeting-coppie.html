@@ -23,7 +23,7 @@ import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=punctuation-20261106a';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
-import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
+import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
 import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=punctuation-20261106a';
 
 const firebaseConfig = {
@@ -695,7 +695,8 @@ function renderAdmin() {
       );
     });
 
-    const confirmBtn = importItems.length ? e("button", {
+    const isItaliaCentroImport=importItems.length===1&&importItems[0]?.translations?.it?.title==='Relazione Comunità Italia Centro';
+    const confirmBtn = importItems.length && !isItaliaCentroImport ? e("button", {
       style:{padding:"10px 22px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"},
       onClick: async () => {
         if (importBusy) return;
@@ -791,18 +792,31 @@ function renderAdmin() {
       e("div", {style:{padding:"14px",border:"1px solid rgba(200,169,110,0.35)",borderRadius:"12px",margin:"12px 0 16px",lineHeight:"1.6",fontSize:"13px",color:"#e8dcc8",background:"rgba(200,169,110,0.06)"}},
         e("strong",{}, "Dove vengono conservati i materiali"),
         e("p",{style:{margin:"8px 0"}},"TESTI nelle 5 lingue: le relazioni autorizzate possono essere conservate su GitHub e attivate dal Programma. Le altre restano in Firebase. La prima prova è disponibile per Region Italia, dopo una verifica completa."),
-        e("p",{style:{margin:"8px 0"}},"SLIDE: vengono lette da GitHub. Per un pacchetto con slide, occorre pubblicare prima lo ZIP contenente solo le immagini. I testi restano in Firebase."),
+        e("p",{style:{margin:"8px 0"}},"SLIDE: vengono lette da GitHub. I testi delle relazioni archiviate, come Nicola e Antonella e Italia Centro, sono anch’essi su GitHub; Firebase conserva soltanto metadati e lettura attiva."),
         e("a",{href:"https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives",target:"_blank",rel:"noopener noreferrer",style:{color:"#e8c87a",textDecoration:"underline"}},"Apri la cartella GitHub per caricare lo ZIP delle slide"),
         e("p",{style:{margin:"8px 0 0",color:"#c8b6a1"}},"Nessuna modifica al QR, al microfono o alle condivisioni già presenti.")
       ),
       e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Puoi caricare i nuovi file JSON con i testi nelle cinque lingue. L'app controlla lo spazio prima del salvataggio e non cancella nulla se il limite viene superato. Per i pacchetti con slide serve ancora il relativo archivio immagini su GitHub. I testi e le traduzioni restano privati in Firebase."),
+      e("div",{style:{border:'1px solid rgba(200,169,110,.5)',borderRadius:'12px',padding:'16px',margin:'18px 0',background:'rgba(200,169,110,.07)'}},
+        e("strong",{},"☁️ Italia Centro – testi e slide già su GitHub"),
+        e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Aggiunge al Programma solo il collegamento leggero. Le cinque lingue e le 70 immagini restano su GitHub; non importa il testo completo in Firebase."),
+        e("button",{disabled:importBusy?'':null,style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
+          if(importBusy)return;
+          importBusy=true;
+          ev.currentTarget.disabled=true;
+          ev.currentTarget.textContent='Verifica GitHub e posizioni slide…';
+          try{await addItaliaCentroFromGitHub();}
+          catch(err){importError=err?.message||String(err);importBusy=false;render();}
+        }},"☁️ Collega Italia Centro da GitHub")
+      ),
       fileInput,
+      isItaliaCentroImport ? e("p",{style:{color:'#ffcf86',marginTop:'10px',fontSize:'13px'}},"Questo ZIP contiene Italia Centro: NON usare Conferma importazione. Premi sopra «Collega Italia Centro da GitHub» per non occupare Firebase.") : null,
       importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
       importItems.length ? e("div", { style:{marginTop:"20px"} },
         e("div", { style:{fontSize:"14px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "Anteprima — "+importItems.length+" condivisioni"),
         ...previewRows,
         e("div", { style:{display:"flex", gap:"10px", marginTop:"18px", flexWrap:"wrap"} },
-          confirmBtn,
+          !isItaliaCentroImport?confirmBtn:null,
           e("button", { style:{padding:"10px 18px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer"}, onClick:()=>{ importItems=[]; importError=""; render(); } }, "Annulla")
         )
       ) : null
@@ -922,7 +936,51 @@ function renderAdmin() {
 }
 
 // Spostamento manuale e verificato. Non modifica la relazione attiva.
-async function archiveRegionItaliaShare(id){
+async const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
+const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
+const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
+async function addItaliaCentroFromGitHub(){
+  if(!adminAuth)throw Error('Accedi come amministratore.');
+  const source=await loadPublicText(ITALIA_CENTRO_FILE);
+  const original=source.translations;
+  if(!['it','en','fr','es','pt'].every(l=>original?.[l]?.body?.length>100))throw Error('Testi GitHub incompleti.');
+  await checkSlideArchive(ITALIA_CENTRO_SLIDES,ITALIA_CENTRO_POSITIONS.map(p=>p.number));
+  // Validate all 5 languages and slide positions BEFORE any database write.
+  const prepared=preparePublicSlideReading(original,ITALIA_CENTRO_POSITIONS);
+  if(!prepared.readingBlocks.length||prepared.inlineSlides.length!==14)throw Error('Preparazione dei passaggi incompleta.');
+  const meta=compactPublicShare({
+    id:'github-italia-centro-roby-silvia',
+    sectionId:'sab-mat',
+    coupleName:'Roby e Silvia – Italia Centro',
+    day:'Sabato 28 novembre 2026',
+    time:'',
+    speakerLanguage:'it',
+    imageUrl:'',
+    translations:Object.fromEntries(['it','en','fr','es','pt'].map(l=>[l,{title:original[l].title,body:''}])),
+    publicTextFile:ITALIA_CENTRO_FILE,
+    publicSlidePositions:ITALIA_CENTRO_POSITIONS,
+    slideArchive:ITALIA_CENTRO_SLIDES,
+    readingBlocks:null,
+    inlineSlides:[],
+    readingSegmentationVersion:2
+  });
+  await runTransaction(firestore,async tx=>{
+    const stateRef=doc(firestore,'state','main');
+    const snap=await tx.get(stateRef);
+    if(!snap.exists())throw Error('Database non disponibile.');
+    const state=snap.data();
+    const duplicates=(state.shares||[]).filter(s=>s.publicTextFile===ITALIA_CENTRO_FILE||s.id===meta.id||s.translations?.it?.title===original.it.title);
+    if(duplicates.length)throw Error('Italia Centro risulta già presente nel Programma: nessuna copia aggiunta.');
+    const shares=[...(state.shares||[]),meta];
+    const total=new TextEncoder().encode(JSON.stringify({...state,shares})).length;
+    if(total>850000)throw Error('Spazio Firebase insufficiente: nessun dato modificato.');
+    tx.update(stateRef,{shares});
+  });
+  publicTextCache.set(ITALIA_CENTRO_FILE,source);
+  importItems=[];importZip=null;importError='';adminTab='list';render();
+  alert('Italia Centro collegata: testi e 70 immagini su GitHub. Firebase conserva soltanto metadati e comandi. Ora verifica la relazione dal Programma.');
+}
+function archiveRegionItaliaShare(id){
   if(!adminAuth)throw Error('Accesso amministratore richiesto.');
   if(appState.activeShareId===id)throw Error('Disattiva prima questa condivisione.');
   const source=await loadPublicText(REGION_ITALIA_FILE);
@@ -957,8 +1015,15 @@ async function activateShare(id) {
         const aligned=alignedReadingBlocks(translations)||suggestBlocks(translations).blocks;
         return shortenLongReadingBlocks(aligned,translations,105);
       });
-      // Even previously saved full paragraphs must be shortened before the reader starts.
-      hydrated.readingBlocks=shortenLongReadingBlocks(hydrated.readingBlocks,hydrated.translations,105);
+      if(candidate.publicSlidePositions?.length){
+        const prepared=preparePublicSlideReading(hydrated.translations,candidate.publicSlidePositions);
+        hydrated.readingBlocks=prepared.readingBlocks;
+        hydrated.inlineSlides=prepared.inlineSlides;
+        hydrated.readingSegmentationVersion=2;
+      }else{
+        // No slides: retain the existing short passage behavior.
+        hydrated.readingBlocks=shortenLongReadingBlocks(hydrated.readingBlocks,hydrated.translations,105);
+      }
       if(!hydrated.readingBlocks?.length)
         throw Error('Passaggi della relazione pubblica non disponibili: non attivata.');
       shares=shares.map(s=>s.id===newId?hydrated:s);
