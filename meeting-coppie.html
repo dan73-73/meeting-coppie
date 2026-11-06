@@ -24,7 +24,7 @@ import { createReadingIntegration } from './reading-integration-slides-test.mjs?
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
-import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=short-passages-20261106';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
@@ -953,7 +953,12 @@ async function activateShare(id) {
     const candidate=shares.find(s=>s.id===newId);
     if(candidate?.publicTextFile){
       const content=await loadPublicText(candidate.publicTextFile);
-      const hydrated=hydratePublicShare(candidate,content,alignedReadingBlocks);
+      const hydrated=hydratePublicShare(candidate,content,translations=>{
+        const aligned=alignedReadingBlocks(translations)||suggestBlocks(translations).blocks;
+        return shortenLongReadingBlocks(aligned,translations,105);
+      });
+      // Even previously saved full paragraphs must be shortened before the reader starts.
+      hydrated.readingBlocks=shortenLongReadingBlocks(hydrated.readingBlocks,hydrated.translations,105);
       if(!hydrated.readingBlocks?.length)
         throw Error('Passaggi della relazione pubblica non disponibili: non attivata.');
       shares=shares.map(s=>s.id===newId?hydrated:s);
