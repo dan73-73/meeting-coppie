@@ -151,6 +151,7 @@ let coupleLang = null;
 let couplePageIndex = 0;
 let adminAuth = false;
 let adminTab = "list";
+let publicMetaDraft = null;
 let adminForm = null;
 let adminEditId = null;
 let adminFormTarget = "shares"; // "shares" or "library"
@@ -560,7 +561,7 @@ function renderAdmin() {
                       onClick:async()=>{try{await archiveRegionItaliaShare(share.id);}catch(err){alert('Non ho modificato la relazione: '+(err.message||err));}}},
                       "☁️ Su GitHub") : null,
                 share.publicTextFile ? e("span",{style:{color:"#c8a96e",fontSize:"12px"}},"☁️ GitHub"):null,
-                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>share.publicTextFile?alert('Questa relazione è archiviata su GitHub. Le modifiche ai testi devono essere preparate e pubblicate nuovamente sul relativo archivio, dopo la verifica delle cinque lingue.'):openEditForm(share) }, "✏️"),
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>share.publicTextFile?openPublicMetaForm(share):openEditForm(share) }, "✏️"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
                 actionBtn
               )
@@ -570,6 +571,45 @@ function renderAdmin() {
       });
 
     bodyContent = e("div", {}, modeBar, statusBar, filters, ...grouped);
+  }
+
+  // ── TAB: Lingua letta dal relatore (testi su GitHub) ──
+  else if (adminTab === "publicmeta" && publicMetaDraft) {
+    const draft=publicMetaDraft;
+    const speaker=e("select",{style:{padding:"12px",background:"#1a1a2e",color:"#e8dcc8",border:"1px solid rgba(200,169,110,0.4)",borderRadius:"10px",fontSize:"16px",width:"100%"}});
+    for(const [code,label] of [["","Da impostare"],["it","Italiano"],["es","Español"],["fr","Français"],["en","English"],["pt","Português"]]){
+      const opt=e("option",{value:code},label);
+      if(draft.speakerLanguage===code)opt.selected=true;
+      speaker.append(opt);
+    }
+    speaker.addEventListener("change",ev=>{draft.speakerLanguage=ev.target.value;});
+    const feedback=e("p",{style:{color:"#ffbf92",fontSize:"13px",marginTop:"12px"}});
+    const saveBtn=e("button",{style:{padding:"11px 22px",borderRadius:"18px",border:"none",background:"#c8a96e",fontSize:"15px",fontWeight:"700",cursor:"pointer"},onClick:async()=>{
+      saveBtn.disabled=true;
+      feedback.textContent="Salvataggio lingua in corso…";
+      try{
+        await runTransaction(firestore,async tx=>{
+          const ref=doc(firestore,"state","main"),snap=await tx.get(ref);
+          if(!snap.exists())throw Error("Database non disponibile");
+          const state=snap.data();
+          const current=(state.shares||[]).find(x=>x.id===draft.id);
+          if(!current||!current.publicTextFile)throw Error("La relazione non è più archiviata su GitHub");
+          tx.update(ref,{shares:state.shares.map(x=>x.id===draft.id?{...x,speakerLanguage:draft.speakerLanguage}:x)});
+        });
+        publicMetaDraft=null;
+        adminTab="list";
+        render();
+      }catch(err){saveBtn.disabled=false;feedback.textContent="Errore: "+(err.message||err);}
+    }},"💾 Salva lingua del relatore");
+    bodyContent=e("div",{style:{maxWidth:"600px"}},
+      e("h3",{style:{fontSize:"21px",color:"#c8a96e",marginBottom:"12px"}},"🎤 Lingua parlata dal relatore"),
+      e("p",{style:{color:"#e8dcc8",marginBottom:"10px"}},"Relazione: "+draft.title),
+      e("p",{style:{fontSize:"13px",color:"#a09080",marginBottom:"16px"}},"Questa impostazione controlla la lingua ascoltata dal microfono. Non modifica i testi e le traduzioni pubblicati su GitHub."),
+      speaker,
+      e("div",{style:{display:"flex",gap:"12px",flexWrap:"wrap",marginTop:"20px"}},
+        saveBtn,
+        e("button",{style:{padding:"11px 20px",borderRadius:"18px",border:"1px solid #806f5a",background:"transparent",color:"#e8dcc8",cursor:"pointer"},onClick:()=>{publicMetaDraft=null;adminTab="list";render();}},"Annulla")),
+      feedback);
   }
 
   // ── TAB: NUOVA (form) ──
@@ -955,6 +995,11 @@ function openNewForm(sectionId) {
   };
   adminEditId = null;
   adminTab = "add";
+  render();
+}
+function openPublicMetaForm(share) {
+  publicMetaDraft={id:share.id,title:share.translations?.it?.title||share.coupleName||"Condivisione",speakerLanguage:share.speakerLanguage||""};
+  adminTab="publicmeta";
   render();
 }
 function openEditForm(share) {
