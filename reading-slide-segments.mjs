@@ -1,4 +1,4 @@
-import {LANGS,validateBlocks} from './reading-follow.mjs';
+import {LANGS,validateBlocks,punctuationSections} from './reading-follow.mjs?v=punctuation-20261106a';
 
 // Le slide delimitano le sezioni. I passaggi della lettura vengono suddivisi
 // solo sui confini delle frasi, senza alterare neppure uno spazio dei testi.
@@ -14,7 +14,7 @@ function sentences(text,lang) {
 function arrangeSentences(text,lang,count) {
   if(count===1)return [text];
   const parts=sentences(text,lang);
-  if(parts.length<count)throw Error('Frasi insufficienti in '+lang);
+  if(parts.length<count)return punctuationSections(text,count);
   const groups=[];
   let start=0;
   // Cerca il punto di fine frase più vicino alla lunghezza ideale,
