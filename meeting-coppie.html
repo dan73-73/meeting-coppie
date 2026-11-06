@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=archive-views-v9';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=public-text-pilot-1';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
@@ -526,7 +526,7 @@ function renderAdmin() {
             if (mode === "one") {
               actionBtn = e("button", {
                 style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isActiveOne?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isActiveOne?"rgba(76,175,80,0.2)":"transparent", color:isActiveOne?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
-                onClick:()=>activateShare(share.id)
+                onClick:async()=>{try{await activateShare(share.id);}catch(err){alert('Impossibile attivare la condivisione: '+(err.message||err));}}
               }, isActiveOne?"● ATTIVA":"Attiva");
             } else if (mode === "selected") {
               actionBtn = e("button", {
@@ -560,7 +560,7 @@ function renderAdmin() {
                       onClick:async()=>{try{await archiveRegionItaliaShare(share.id);}catch(err){alert('Non ho modificato la relazione: '+(err.message||err));}}},
                       "☁️ Su GitHub") : null,
                 share.publicTextFile ? e("span",{style:{color:"#c8a96e",fontSize:"12px"}},"☁️ GitHub"):null,
-                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openEditForm(share) }, "✏️"),
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>share.publicTextFile?alert('Questa relazione è archiviata su GitHub. Le modifiche ai testi devono essere preparate e pubblicate nuovamente sul relativo archivio, dopo la verifica delle cinque lingue.'):openEditForm(share) }, "✏️"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
                 actionBtn
               )
@@ -750,7 +750,7 @@ function renderAdmin() {
       e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Carica condivisioni e slide"),
       e("div", {style:{padding:"14px",border:"1px solid rgba(200,169,110,0.35)",borderRadius:"12px",margin:"12px 0 16px",lineHeight:"1.6",fontSize:"13px",color:"#e8dcc8",background:"rgba(200,169,110,0.06)"}},
         e("strong",{}, "Dove vengono conservati i materiali"),
-        e("p",{style:{margin:"8px 0"}},"TESTI nelle 5 lingue: attualmente vengono salvati in Firebase. Non sono ancora disponibili il caricamento e la lettura dei testi da GitHub; la procedura mantiene il controllo dello spazio."),
+        e("p",{style:{margin:"8px 0"}},"TESTI nelle 5 lingue: le relazioni autorizzate possono essere conservate su GitHub e attivate dal Programma. Le altre restano in Firebase. La prima prova è disponibile per Region Italia, dopo una verifica completa."),
         e("p",{style:{margin:"8px 0"}},"SLIDE: vengono lette da GitHub. Per un pacchetto con slide, occorre pubblicare prima lo ZIP contenente solo le immagini. I testi restano in Firebase."),
         e("a",{href:"https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives",target:"_blank",rel:"noopener noreferrer",style:{color:"#e8c87a",textDecoration:"underline"}},"Apri la cartella GitHub per caricare lo ZIP delle slide"),
         e("p",{style:{margin:"8px 0 0",color:"#c8b6a1"}},"Nessuna modifica al QR, al microfono o alle condivisioni già presenti.")
