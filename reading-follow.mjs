@@ -64,6 +64,48 @@ export function validateBlocks(blocks,translations) {
   }
   return true;
 }
+// Prefer a comma or the end of a sentence over arbitrary word boundaries.
+// Counts stay identical across all translations; no text or punctuation is changed.
+export function punctuationSections(text,count){
+  const str=String(text||'');
+  if(count<=1)return [str];
+  const cuts=[],length=str.length;
+  let start=0;
+  for(let i=1;i<count;i++){
+    const remaining=count-i;
+    const ideal=Math.round(length*i/count);
+    const lower=Math.max(start+30,ideal-60);
+    const upper=Math.min(length-remaining*28,ideal+60);
+    let best=-1,score=Infinity;
+    for(let pos=lower;pos<=upper;pos++){
+      if(!/\\s/u.test(str[pos-1]||''))continue;
+      const before=str.slice(start,pos).trimEnd();
+      const last=before.slice(-3);
+      // Punctuation remains in the highlighted passage, not the next one.
+      const sentence=/[.!?][”’"»)]?$/u.test(last);
+      const clause=/[,;:][”’"»)]?$/u.test(last);
+      const penalty=sentence?0:clause?14:65;
+      const distance=Math.abs(pos-ideal);
+      const nextLen=length-pos;
+      const value=distance+penalty+(nextLen/remaining<32?200:0);
+      if(value<score){best=pos;score=value;}
+    }
+    if(best<0){
+      // Fallback only for an unusually long, punctuation-free stretch.
+      const min=Math.max(start+1,Math.min(length-remaining,ideal));
+      best=min;
+      for(let d=0;d<60;d++){
+        if(best+d<length-remaining&&/\\s/u.test(str[best+d-1]||'')){best+=d;break;}
+        if(best-d>start&&/\\s/u.test(str[best-d-1]||'')){best-=d;break;}
+      }
+    }
+    cuts.push(best);
+    start=best;
+  }
+  const pieces=[],boundaries=[0,...cuts,length];
+  for(let i=0;i<boundaries.length-1;i++)pieces.push(str.slice(boundaries[i],boundaries[i+1]));
+  return pieces;
+}
 // Divide long aligned paragraphs into smaller synchronized reading passages.
 // Every character in each of the five translations is preserved, including spaces.
 export function shortenLongReadingBlocks(blocks,translations,maxCharacters=115){
@@ -73,7 +115,7 @@ export function shortenLongReadingBlocks(blocks,translations,maxCharacters=115){
     const lengths=LANGS.map(lang=>String(block[lang]||'').length);
     const maxLen=Math.max(...lengths),minLen=Math.min(...lengths);
     const parts=Math.max(1,Math.min(24,Math.ceil(maxLen/maxCharacters),Math.floor(minLen/35)));
-    const chunks=Object.fromEntries(LANGS.map(lang=>[lang,parts===1?[block[lang]]:shortSections(block[lang],parts)]));
+    const chunks=Object.fromEntries(LANGS.map(lang=>[lang,parts===1?[block[lang]]:punctuationSections(block[lang],parts)]));
     for(let i=0;i<parts;i++){
       const entry=Object.fromEntries(LANGS.map(lang=>[lang,chunks[lang][i]]));
       if(LANGS.some(lang=>!entry[lang]?.trim()))throw Error('Passaggio vuoto dopo la suddivisione in '+LANGS.find(lang=>!entry[lang]?.trim()));
