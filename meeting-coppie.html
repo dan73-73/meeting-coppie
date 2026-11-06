@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=punctuation-20261106a';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=public-slides-20261106';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
@@ -800,7 +800,7 @@ function renderAdmin() {
       e("div",{style:{border:'1px solid rgba(200,169,110,.5)',borderRadius:'12px',padding:'16px',margin:'18px 0',background:'rgba(200,169,110,.07)'}},
         e("strong",{},"☁️ Italia Centro – testi e slide già su GitHub"),
         e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Aggiunge al Programma solo il collegamento leggero. Le cinque lingue e le 70 immagini restano su GitHub; non importa il testo completo in Firebase."),
-        e("button",{disabled:importBusy?'':null,style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
+        e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
           if(importBusy)return;
           importBusy=true;
           ev.currentTarget.disabled=true;
@@ -936,7 +936,7 @@ function renderAdmin() {
 }
 
 // Spostamento manuale e verificato. Non modifica la relazione attiva.
-async const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
+const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 async function addItaliaCentroFromGitHub(){
@@ -980,7 +980,7 @@ async function addItaliaCentroFromGitHub(){
   importItems=[];importZip=null;importError='';adminTab='list';render();
   alert('Italia Centro collegata: testi e 70 immagini su GitHub. Firebase conserva soltanto metadati e comandi. Ora verifica la relazione dal Programma.');
 }
-function archiveRegionItaliaShare(id){
+async function archiveRegionItaliaShare(id){
   if(!adminAuth)throw Error('Accesso amministratore richiesto.');
   if(appState.activeShareId===id)throw Error('Disattiva prima questa condivisione.');
   const source=await loadPublicText(REGION_ITALIA_FILE);
