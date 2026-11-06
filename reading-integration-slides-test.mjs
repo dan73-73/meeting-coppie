@@ -1,6 +1,6 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
-import {LANGS,suggestBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
+import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=short-passages-20261106';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
@@ -116,8 +116,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         if(next.publicTextFile&&(!externalNext||externalTargetId!==next.id))
           throw Error('Testo pubblico non preparato: cambio condivisione annullato.');
         const prepared=next.publicTextFile
-          ? hydratePublicShare(next,externalNext,translations=>suggestBlocks(translations).blocks)
+          ? hydratePublicShare(next,externalNext,translations=>shortenLongReadingBlocks(suggestBlocks(translations).blocks,translations,105))
           : next;
+        if(next.publicTextFile)
+          prepared.readingBlocks=shortenLongReadingBlocks(usableBlocks(prepared)||suggestBlocks(prepared.translations).blocks,prepared.translations,105);
         const blocks=usableBlocks(prepared),nextSession=crypto.randomUUID(),id=crypto.randomUUID();
         const patch={displayMode:'one',activeShareId:next.id,
           readingFollow:blocks?{shareId:next.id,session:nextSession,blocks,index:0,revision:0}:null,
