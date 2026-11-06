@@ -1,6 +1,6 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
-import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=short-passages-20261106';
+import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=punctuation-20261106a';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
