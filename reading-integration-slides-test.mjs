@@ -1,7 +1,7 @@
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
 import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=punctuation-20261106a';
-import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
+import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 
@@ -118,8 +118,16 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         const prepared=next.publicTextFile
           ? hydratePublicShare(next,externalNext,translations=>shortenLongReadingBlocks(suggestBlocks(translations).blocks,translations,105))
           : next;
-        if(next.publicTextFile)
-          prepared.readingBlocks=shortenLongReadingBlocks(usableBlocks(prepared)||suggestBlocks(prepared.translations).blocks,prepared.translations,105);
+        if(next.publicTextFile){
+          if(next.publicSlidePositions?.length){
+            const refined=preparePublicSlideReading(prepared.translations,next.publicSlidePositions);
+            prepared.readingBlocks=refined.readingBlocks;
+            prepared.inlineSlides=refined.inlineSlides;
+            prepared.readingSegmentationVersion=2;
+          }else{
+            prepared.readingBlocks=shortenLongReadingBlocks(usableBlocks(prepared)||suggestBlocks(prepared.translations).blocks,prepared.translations,105);
+          }
+        }
         const blocks=usableBlocks(prepared),nextSession=crypto.randomUUID(),id=crypto.randomUUID();
         const patch={displayMode:'one',activeShareId:next.id,
           readingFollow:blocks?{shareId:next.id,session:nextSession,blocks,index:0,revision:0}:null,
