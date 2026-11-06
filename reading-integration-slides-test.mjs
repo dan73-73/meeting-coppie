@@ -3,6 +3,7 @@ import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
 import {LANGS,suggestBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
   const ref=doc(db,'state','main');
@@ -95,6 +96,15 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   async function remoteCommand(command){
     const state=getState(),share=active();
     if(!isAdmin()||!share)throw Error('Seleziona una condivisione attiva.');
+    let externalNext=null,externalTargetId=null;
+    if(command==='next'||command==='previous'){
+      const ordered=orderedShares(state),index=ordered.findIndex(x=>x.id===share.id);
+      const target=ordered[index+(command==='next'?1:-1)];
+      if(target?.publicTextFile){
+        externalNext=await loadPublicText(target.publicTextFile);
+        externalTargetId=target.id;
+      }
+    }
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref),now=snap.data();
       if(!now||now.activeShareId!==share.id)throw Error('La condivisione attiva è cambiata.');
@@ -103,10 +113,18 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         const items=orderedShares(now),index=items.findIndex(x=>x.id===share.id);
         const next=items[index+(command==='next'?1:-1)];
         if(!next)throw Error('Non ci sono altre condivisioni in questa direzione.');
-        const blocks=usableBlocks(next),nextSession=crypto.randomUUID(),id=crypto.randomUUID();
-        tx.update(ref,{displayMode:'one',activeShareId:next.id,
+        if(next.publicTextFile&&(!externalNext||externalTargetId!==next.id))
+          throw Error('Testo pubblico non preparato: cambio condivisione annullato.');
+        const prepared=next.publicTextFile
+          ? hydratePublicShare(next,externalNext,translations=>suggestBlocks(translations).blocks)
+          : next;
+        const blocks=usableBlocks(prepared),nextSession=crypto.randomUUID(),id=crypto.randomUUID();
+        const patch={displayMode:'one',activeShareId:next.id,
           readingFollow:blocks?{shareId:next.id,session:nextSession,blocks,index:0,revision:0}:null,
-          readingRemote:{previousSession:sessionId,session:blocks?nextSession:null,command,id,manual:!blocks}});
+          readingRemote:{previousSession:sessionId,session:blocks?nextSession:null,command,id,manual:!blocks}};
+        if((now.shares||[]).some(s=>s.publicTextFile))
+          patch.shares=now.shares.map(s=>s.id===next.id?prepared:compactPublicShare(s));
+        tx.update(ref,patch);
       }else if(command==='pause'||command==='resume'||command==='manual'){
         if(command==='resume'&&!valid(current,share))throw Error('Prepara prima i passaggi di questa condivisione per il microfono.');
         tx.update(ref,{readingRemote:{session:sessionId,command:command==='manual'?'pause':command,manual:command==='manual',id:crypto.randomUUID()}});

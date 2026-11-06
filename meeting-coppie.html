@@ -22,6 +22,7 @@ import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
 import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=archive-views-v9';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
+import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides} from './reading-slide-segments.mjs?v=phrases-20261105';
 import { suggestBlocks } from './reading-follow.mjs?v=paragraph-align-8c3dc5';
 
@@ -64,6 +65,7 @@ function alignedReadingBlocks(translations) {
 }
 
 async function saveState(state) {
+  state=preparePublicSave(state);
   const ref = doc(firestore, "state", "main");
   await runTransaction(firestore, async tx => {
     const snap = await tx.get(ref);
@@ -120,6 +122,30 @@ async function translateWithAI(itTitle, itBody) {
 }
 
 let appState = { ...DEFAULT_STATE };
+let persistedState = { ...DEFAULT_STATE };
+const publicTextCache=new Map();
+const publicTextLoading=new Set();
+function applyPublicLocalCache(state){
+  return {...state,shares:(state.shares||[]).map(share=>{
+    const content=share.publicTextFile&&publicTextCache.get(share.publicTextFile);
+    return content&&!(share.translations?.it?.body)
+      ? hydratePublicShare(share,content,alignedReadingBlocks):share;
+  })};
+}
+function loadPublicInBackground(state){
+  for(const share of state.shares||[]){
+    const file=share.publicTextFile;
+    if(!file||publicTextCache.has(file)||publicTextLoading.has(file))continue;
+    publicTextLoading.add(file);
+    loadPublicText(file).then(content=>{
+      publicTextCache.set(file,content);
+      appState=applyPublicLocalCache(persistedState);
+      render();
+    }).catch(err=>{
+      console.error('Relazione GitHub non disponibile:',file,err);
+    }).finally(()=>publicTextLoading.delete(file));
+  }
+}
 let currentView = window.location.hash === "#couple" ? "couple" : "admin";
 let coupleLang = null;
 let couplePageIndex = 0;
@@ -529,6 +555,11 @@ function renderAdmin() {
                 )
               ),
               e("div", { style:{display:"flex", gap:"6px", alignItems:"center"} },
+                !share.publicTextFile && share.translations?.it?.title==='Region Italia – Nicola e Antonella'
+                  ? e("button",{title:"Sposta i testi su GitHub dopo verifica completa",style:{padding:"5px 8px",border:"1px solid #c8a96e",borderRadius:"8px",background:"transparent",color:"#c8a96e",cursor:"pointer",fontSize:"12px"},
+                      onClick:async()=>{try{await archiveRegionItaliaShare(share.id);}catch(err){alert('Non ho modificato la relazione: '+(err.message||err));}}},
+                      "☁️ Su GitHub") : null,
+                share.publicTextFile ? e("span",{style:{color:"#c8a96e",fontSize:"12px"}},"☁️ GitHub"):null,
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openEditForm(share) }, "✏️"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
                 actionBtn
@@ -850,9 +881,45 @@ function renderAdmin() {
   );
 }
 
+// Spostamento manuale e verificato. Non modifica la relazione attiva.
+async function archiveRegionItaliaShare(id){
+  if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  if(appState.activeShareId===id)throw Error('Disattiva prima questa condivisione.');
+  const source=await loadPublicText(REGION_ITALIA_FILE);
+  const original=(appState.shares||[]).find(s=>s.id===id);
+  if(!original||!publicTextMatches(original,source))
+    throw Error('Il documento GitHub differisce dai testi presenti in Firebase: nessun dato modificato.');
+  await runTransaction(firestore,async tx=>{
+    const ref=doc(firestore,'state','main');
+    const snap=await tx.get(ref);
+    if(!snap.exists())throw Error('Firebase non disponibile.');
+    const state=snap.data();
+    if(state.activeShareId===id)throw Error('Relazione attiva: spostamento bloccato.');
+    const current=(state.shares||[]).find(s=>s.id===id);
+    if(!current||!publicTextMatches(current,source))
+      throw Error('I testi sono cambiati. Nessuna modifica eseguita.');
+    const archived=compactPublicShare({...current,publicTextFile:REGION_ITALIA_FILE});
+    tx.update(ref,{shares:state.shares.map(s=>s.id===id?archived:s)});
+  });
+  publicTextCache.set(REGION_ITALIA_FILE,source);
+  alert('Archiviazione riuscita. Le cinque lingue si trovano su GitHub; Firebase conserva i comandi e i metadati. Verifica la percentuale di spazio in alto.');
+}
+
 // ═══ ACTIONS ═══
 async function activateShare(id) {
-  await saveState({ ...appState, activeShareId: appState.activeShareId===id ? null : id });
+  const newId=appState.activeShareId===id?null:id;
+  let shares=appState.shares||[];
+  if(newId){
+    const candidate=shares.find(s=>s.id===newId);
+    if(candidate?.publicTextFile){
+      const content=await loadPublicText(candidate.publicTextFile);
+      const hydrated=hydratePublicShare(candidate,content,alignedReadingBlocks);
+      if(!hydrated.readingBlocks?.length)
+        throw Error('Passaggi della relazione pubblica non disponibili: non attivata.');
+      shares=shares.map(s=>s.id===newId?hydrated:s);
+    }
+  }
+  await saveState({...appState,shares,activeShareId:newId});
 }
 async function toggleSelected(id) {
   const current = appState.selectedShareIds || [];
@@ -1048,7 +1115,7 @@ async function migrateExistingSlides(){
 }
 function storageMeter(){
   const limit=850000; // limite prudenziale dell'importazione nell'app
-  const bytes=new TextEncoder().encode(JSON.stringify(appState||{})).length;
+  const bytes=new TextEncoder().encode(JSON.stringify(persistedState||{})).length;
   const remaining=Math.max(0,limit-bytes);
   const percent=Math.min(100,Math.round(bytes/limit*100));
   const count=(appState.shares||[]).length;
@@ -1126,7 +1193,9 @@ onAuthStateChanged(auth, user => {
 await initState();
 subscribeState(state => {
   const previous=appState;
-  appState={...DEFAULT_STATE,...state};
+  persistedState={...DEFAULT_STATE,...state};
+  appState=applyPublicLocalCache(persistedState);
+  loadPublicInBackground(persistedState);
   reading.sync();
   const before=previous?.readingFollow,after=appState.readingFollow;
   const sameContext=currentView==='couple' && coupleLang && before && after &&
