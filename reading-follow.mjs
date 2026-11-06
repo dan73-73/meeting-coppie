@@ -64,6 +64,25 @@ export function validateBlocks(blocks,translations) {
   }
   return true;
 }
+// Divide long aligned paragraphs into smaller synchronized reading passages.
+// Every character in each of the five translations is preserved, including spaces.
+export function shortenLongReadingBlocks(blocks,translations,maxCharacters=115){
+  validateBlocks(blocks,translations);
+  const out=[];
+  for(const block of blocks){
+    const lengths=LANGS.map(lang=>String(block[lang]||'').length);
+    const maxLen=Math.max(...lengths),minLen=Math.min(...lengths);
+    const parts=Math.max(1,Math.min(24,Math.ceil(maxLen/maxCharacters),Math.floor(minLen/35)));
+    const chunks=Object.fromEntries(LANGS.map(lang=>[lang,parts===1?[block[lang]]:shortSections(block[lang],parts)]));
+    for(let i=0;i<parts;i++){
+      const entry=Object.fromEntries(LANGS.map(lang=>[lang,chunks[lang][i]]));
+      if(LANGS.some(lang=>!entry[lang]?.trim()))throw Error('Passaggio vuoto dopo la suddivisione in '+LANGS.find(lang=>!entry[lang]?.trim()));
+      out.push(entry);
+    }
+  }
+  validateBlocks(out,translations);
+  return out;
+}
 // Ordered approximate matching of the last spoken words against short text windows.
 // A conservative threshold and ambiguity margin prevent jumping on generic words.
 export function scorePassage(spoken,text) {
