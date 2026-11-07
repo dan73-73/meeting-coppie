@@ -56,7 +56,7 @@ export function slideAt(share,lang,blockIndex,createElement) {
   return slides.filter(s=>Number.isInteger(s?.afterBlock)&&s.afterBlock===blockIndex)
     .map(s=>{
       const embedded=s.images?.[lang];
-      const archive=share.slideArchive;
+      const archive=share.publicTextFile==='italia-centro-roby-silvia.json' ? 'ITALIA_CENTRO_MEETING_slides_5_LINGUE_CORRETTE.zip' : share.slideArchive;
       const allowed=typeof embedded==='string'&&/^(https:\/\/|data:image\/webp;base64,)/i.test(embedded);
       if(!allowed&&!archive)return null;
       const image=createElement('img',{
