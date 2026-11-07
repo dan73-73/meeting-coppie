@@ -1,5 +1,5 @@
 import {createMicrophone} from './microphone-engine.mjs';
-import {slideAt} from './reading-slides-test.mjs?v=static-archive-v1';
+import {slideAt} from './reading-slides-test.mjs?v=italia-centro-five-languages-20261107';
 import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=punctuation-20261106a';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
