@@ -69,7 +69,26 @@ export function preparePublicSlideReading(translations,positions){
   const original=suggestBlocks(translations).blocks;
   validateBlocks(original,translations);
   const incoming=positions.map(p=>({number:p.number,afterBlock:p.afterBlock,images:{}}));
-  const refined=refineReadingForSlides(original,incoming,translations);
+  let refined;
+  try{
+    refined=refineReadingForSlides(original,incoming,translations);
+  }catch(err){
+    // Fallback for very short sentences/headings in dense slide presentations.
+    // Preserve the original paragraph boundaries, all five texts and slide order.
+    if(incoming.some(p=>!Number.isInteger(p.afterBlock)||p.afterBlock < -1||p.afterBlock>=original.length))
+      throw err;
+    const safeBlocks=[],safeEnds=[];
+    for(const block of original){
+      const unit=Object.fromEntries(LANGS.map(lang=>[lang,{body:block[lang]}]));
+      const pieces=shortenLongReadingBlocks([block],unit,105);
+      safeBlocks.push(...pieces);
+      safeEnds.push(safeBlocks.length-1);
+    }
+    validateBlocks(safeBlocks,translations);
+    return {readingBlocks:safeBlocks,inlineSlides:incoming.map(slide=>({
+      ...slide,afterBlock:slide.afterBlock<0?-1:safeEnds[slide.afterBlock]
+    }))};
+  }
   const blocks=[],ends=[];
   for(const block of refined.blocks){
     const one=Object.fromEntries(LANGS.map(l=>[l,{body:block[l]}]));
