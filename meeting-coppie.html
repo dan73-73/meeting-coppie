@@ -23,7 +23,7 @@ import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=italia-centro-five-languages-20261107';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
-import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
+import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
 import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=punctuation-20261106a';
 
 const firebaseConfig = {
@@ -803,7 +803,8 @@ function renderAdmin() {
         (()=>{
           const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
             e('option',{value:'nordovest'},'Sabato mattina – Samantha e Cristian, Italia Nord-Ovest'),
-            e('option',{value:'centro'},'Sabato mattina – Roby e Silvia, Italia Centro'));
+            e('option',{value:'centro'},'Sabato mattina – Roby e Silvia, Italia Centro'),
+            e('option',{value:'madrid'},'Madrid – presentazione in spagnolo (sezione provvisoria: sabato mattina)'));
           const btn=e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
             if(importBusy)return;
             importBusy=true;
@@ -961,6 +962,14 @@ const PUBLIC_MEETING_PRESETS={
     sectionId:'sab-mat',
     expectedTitle:'Relazione Comunità Italia Centro',
     afterBlocks:[-1,1,2,3,3,4,5,6,7,7,7,11,17,17]
+  },
+  madrid:{
+    filename:'madrid-europa-2026.json',
+    archive:'MADRID_MEETING_slides.zip',
+    id:'github-madrid-europa-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentación Retrouvaille Madrid',
+    afterBlocks:[-1,0,1,4,11,17,21,27,35,39,43,52,53,55]
   }
 };
 async function addPublicMeetingShare(key){
@@ -998,7 +1007,7 @@ async function addPublicMeetingShare(key){
   });
   publicTextCache.set(spec.filename,source);
   importItems=[];importZip=null;importError='';importBusy=false;adminTab='list';render();
-  alert('Collegamento riuscito: testi e '+positions.length+' slide in cinque lingue su GitHub. Sabato mattina. Ora verifica da Programma.');
+  alert('Collegamento riuscito: testi e '+positions.length+' slide in cinque lingue su GitHub. Sezione iniziale: sabato mattina. Ora verifica dal Programma.');
 }
 async function addItaliaCentroFromGitHub(){
   if(!adminAuth)throw Error('Accedi come amministratore.');
