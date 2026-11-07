@@ -237,7 +237,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function panel(){
     const share=active(),r=getState().readingFollow;
-    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;if(mic.active){tail='';mic.setLanguage(locales[source]);}}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
+    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;if(mic.active){tail='';mic.setLanguage(locales[source]);}refresh();}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
     const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
@@ -246,7 +246,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
-        body(share,'it',share.translations?.it)
+        body(share,source,share.translations?.[source])
       ):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
   }
