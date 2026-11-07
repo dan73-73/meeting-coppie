@@ -806,7 +806,8 @@ function renderAdmin() {
             e('option',{value:'centro'},'Sabato mattina – Roby e Silvia, Italia Centro'),
             e('option',{value:'madrid'},'Madrid – presentazione in spagnolo (sezione provvisoria: sabato mattina)'),
             e('option',{value:'nordest'},'Italia Nord-Est – solo relazione scritta (sezione provvisoria: sabato mattina)'),
-            e('option',{value:'valencia'},'Valencia – Quique e Inma, solo testo in cinque lingue (sezione provvisoria: sabato mattina)'));
+            e('option',{value:'valencia'},'Valencia – Quique e Inma, solo testo in cinque lingue (sezione provvisoria: sabato mattina)'),
+            e('option',{value:'inghilterra'},'Inghilterra e Galles – James e Sharon (9 slide, sabato mattina)'));
           const btn=e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
             if(importBusy)return;
             importBusy=true;
@@ -988,6 +989,14 @@ const PUBLIC_MEETING_PRESETS={
     sectionId:'sab-mat',
     expectedTitle:'Presentazione della Comunità Retrouvaille Valencia',
     afterBlocks:[]
+  },
+  inghilterra:{
+    filename:'inghilterra-james-sharon-2026.json',
+    archive:'INGHILTERRA_MEETING_slides.zip',
+    id:'github-england-wales-james-sharon-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Inghilterra e Galles – James e Sharon Westby',
+    afterBlocks:[-1,2,4,8,13,16,19,22,25]
   }
 };
 async function addPublicMeetingShare(key){
