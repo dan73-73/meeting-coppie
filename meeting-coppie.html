@@ -798,7 +798,7 @@ function renderAdmin() {
       ),
       e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Puoi caricare i nuovi file JSON con i testi nelle cinque lingue. L'app controlla lo spazio prima del salvataggio e non cancella nulla se il limite viene superato. Per i pacchetti con slide serve ancora il relativo archivio immagini su GitHub. I testi e le traduzioni restano privati in Firebase."),
       e("div",{style:{border:'1px solid rgba(200,169,110,.5)',borderRadius:'12px',padding:'16px',margin:'18px 0',background:'rgba(200,169,110,.07)'}},
-        e("strong",{},"☁️ Collega una condivisione già archiviata su GitHub"),
+        e("strong",{},"☁️ Collega una condivisione già archiviata su GitHub · verifica Madrid 11:58"),
         e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Seleziona la comunità. I testi nelle cinque lingue e le slide restano su GitHub. Firebase conserva soltanto i metadati della relazione non attiva."),
         (()=>{
           const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
@@ -977,7 +977,9 @@ async function addPublicMeetingShare(key){
   const spec=PUBLIC_MEETING_PRESETS[key];
   if(!spec)throw Error('Relazione non riconosciuta.');
   const source=await loadPublicText(spec.filename);
-  if(source.translations?.it?.title!==spec.expectedTitle)throw Error('Il titolo GitHub non coincide: nessun dato modificato.');
+  const sourceTitles=['it','es','fr','en','pt'].map(l=>source.translations?.[l]?.title||'');
+  if(!sourceTitles.includes(spec.expectedTitle))
+    throw Error('Controllo titolo: atteso «'+spec.expectedTitle+'», ricevuto «'+(source.translations?.it?.title||'vuoto')+'». Nessun dato modificato.');
   const original=source.translations;
   const languages=['it','en','fr','es','pt'];
   if(!languages.every(l=>original?.[l]?.body?.length>100))throw Error('Traduzioni GitHub incomplete.');
