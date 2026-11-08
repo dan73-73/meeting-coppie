@@ -79,7 +79,11 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const changed=session!==follow?.session;
     if(changed){session=follow?.session||null;tail='';pending=null;localIndex=null;localRevision=null;}
     const language=spokenLanguage(share);
-    if(language&&language!==source){source=language;mic.setLanguage(locales[source]);}
+    if(language&&language!==source){
+      source=language;tail='';pending=null;localIndex=null;localRevision=null;
+      mic.setLanguage(locales[source]);
+      message('Lingua del relatore aggiornata: '+names[source]+'.');
+    }
     if(cmd?.id&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
       if(cmd.command==='pause'){requestedPause=true;}
@@ -237,18 +241,19 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   }
   function panel(){
     const share=active(),r=getState().readingFollow;
-    const select=e('select',{style:{...buttonStyle,background:'#1a1a2e'},onChange:event=>{source=event.target.value;if(mic.active){tail='';mic.setLanguage(locales[source]);}refresh();}});for(const l of LANGS){const o=e('option',{value:l},names[l]);o.selected=l===source;select.append(o);}
+    const savedLanguage=spokenLanguage(share);
+    const languageLabel=e('strong',{style:{fontSize:'14px',color:'#e8c87a'}},savedLanguage?names[savedLanguage]:'Da impostare dalla matita');
     const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('label',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',select),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('span',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',languageLabel),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
         body(share,source,share.translations?.[source])
       ):null,
-      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'PROVA REGIA TABLET: sul computer premi una volta Avvia lettura e autorizza il microfono; dal tablet accedi come amministratore e usa Pausa/Riprendi da tablet. Il microfono deve restare attivo sul computer. Questa prova non avvia il microfono da remoto. Le coppie continuano a usare il QR abituale.'));
+      e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'LINGUA: seleziona e salva la lingua del relatore con la matita nel Programma. Il microfono riconoscerà quella lingua; puoi cambiarla di nuovo per fare prove. Dal tablet puoi usare Pausa/Riprendi, ma il microfono resta sul computer. Le coppie continuano a usare il QR abituale.'));
   }
   let remoteFullTextOpen=false;
   function remotePanel(){
