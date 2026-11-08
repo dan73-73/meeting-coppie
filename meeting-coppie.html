@@ -811,6 +811,7 @@ function renderAdmin() {
             e('option',{value:'francia'},'Francia – Bénigne e Philibert (solo relazione, sabato mattina)'),
             e('option',{value:'olanda'},'Olanda – Elena e Gerard (12 slide, sabato mattina)'),
             e('option',{value:'mark'},'Mark e Maria Luisa – ROW (24 slide, sabato mattina)'),
+            e('option',{value:'paul'},'Paul e Tracy – ROW (8 slide, sabato mattina)'),
             e('option',{value:'inghilterra'},'Inghilterra e Galles – James e Sharon (9 slide, sabato mattina)'));
           const btn=e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
             if(importBusy)return;
@@ -1025,6 +1026,14 @@ const PUBLIC_MEETING_PRESETS={
     sectionId:'sab-mat',
     expectedTitle:'Mark e Maria Luisa – Relazione ROW – Meeting Europeo Parigi 2026',
     afterBlocks:[-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
+  },
+  paul:{
+    filename:'paul-tracy-2026.json',
+    archive:'PAUL_TRACY_MEETING_slides.zip',
+    id:'github-paul-tracy-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Paul e Tracy – Relazione ROW – Meeting Europeo Parigi 2026',
+    afterBlocks:[-1,0,1,2,3,4,5,6]
   },
   inghilterra:{
     filename:'inghilterra-james-sharon-2026.json',
