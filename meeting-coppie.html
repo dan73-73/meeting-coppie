@@ -809,6 +809,7 @@ function renderAdmin() {
             e('option',{value:'valencia'},'Valencia – Quique e Inma, solo testo in cinque lingue (sezione provvisoria: sabato mattina)'),
             e('option',{value:'sud'},'Italia Sud – Veronica, Vito e don Francesco (solo relazione, sabato mattina)'),
             e('option',{value:'francia'},'Francia – Bénigne e Philibert (solo relazione, sabato mattina)'),
+            e('option',{value:'olanda'},'Olanda – Elena e Gerard (12 slide, sabato mattina)'),
             e('option',{value:'inghilterra'},'Inghilterra e Galles – James e Sharon (9 slide, sabato mattina)'));
           const btn=e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
             if(importBusy)return;
@@ -1007,6 +1008,14 @@ const PUBLIC_MEETING_PRESETS={
     sectionId:'sab-mat',
     expectedTitle:'Presentazione Comunità Italia Sud – Veronica, Vito e don Francesco',
     afterBlocks:[]
+  },
+  olanda:{
+    filename:'olanda-elena-gerard-2026.json',
+    archive:'OLANDA_MEETING_slides.zip',
+    id:'github-olanda-elena-gerard-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Retrouvaille Nederland en Vlaanderen – Novembre 2026 – Parigi, Francia',
+    afterBlocks:[-1,0,1,2,3,4,5,6,7,8,9,10]
   },
   inghilterra:{
     filename:'inghilterra-james-sharon-2026.json',
