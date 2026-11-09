@@ -555,12 +555,13 @@ function renderAdmin() {
                   Object.keys(LANG_FLAGS).filter(l=>share.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ")
                 )
               ),
-              e("div", { style:{display:"flex", gap:"6px", alignItems:"center"} },
+              e("div", { style:{display:"flex", gap:"6px", alignItems:"center", flexWrap:"wrap"} },
                 !share.publicTextFile && share.translations?.it?.title==='Region Italia – Nicola e Antonella'
                   ? e("button",{title:"Sposta i testi su GitHub dopo verifica completa",style:{padding:"5px 8px",border:"1px solid #c8a96e",borderRadius:"8px",background:"transparent",color:"#c8a96e",cursor:"pointer",fontSize:"12px"},
                       onClick:async()=>{try{await archiveRegionItaliaShare(share.id);}catch(err){alert('Non ho modificato la relazione: '+(err.message||err));}}},
                       "☁️ Su GitHub") : null,
                 share.publicTextFile ? e("span",{style:{color:"#c8a96e",fontSize:"12px"}},"☁️ GitHub"):null,
+                e("button", {title:"Sposta in un'altra sezione",style:{padding:"5px 8px",border:"1px solid rgba(200,169,110,.4)",borderRadius:"8px",background:"transparent",color:"#c8a96e",cursor:"pointer",fontSize:"12px"},onClick:()=>openMoveSectionPicker(share)}, "↪ Sposta sezione"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>share.publicTextFile?openPublicMetaForm(share):openEditForm(share) }, "✏️"),
                 e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
                 actionBtn
@@ -1199,6 +1200,72 @@ async function deleteShare(id) {
     selectedShareIds:(appState.selectedShareIds||[]).filter(x=>x!==id)
   });
 }
+
+const MEETING_SECTION_DATES={
+  'ven-sera':'Venerdì 27 novembre 2026',
+  'sab-mat':'Sabato 28 novembre 2026',
+  'sab-pom':'Sabato 28 novembre 2026',
+  'sab-sera':'Sabato 28 novembre 2026',
+  'dom-mat':'Domenica 29 novembre 2026'
+};
+// Sposta solo la relazione selezionata, con le sue slide e le cinque lingue.
+// La transazione non tocca l'attivazione, il microfono o il punto di lettura.
+async function relocateShareToSection(shareId,fromSectionId,toSectionId){
+  if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  await runTransaction(firestore,async tx=>{
+    const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
+    if(!snap.exists())throw Error('Programma non disponibile.');
+    const state=snap.data(),sections=state.sections||[],all=state.shares||[];
+    if(!sections.some(s=>s.id===toSectionId))throw Error('La sezione di destinazione non è più disponibile.');
+    const original=all.find(s=>s.id===shareId);
+    if(!original)throw Error('Condivisione non trovata: nessun dato modificato.');
+    if(original.sectionId!==fromSectionId)throw Error('La condivisione è già stata spostata da un’altra postazione. Riapri il comando.');
+    if(fromSectionId===toSectionId)throw Error('Scegli una sezione diversa da quella attuale.');
+    const oldDay=String(original.day||'');
+    const standardMeetingDay=!oldDay.trim()||/^\s*(?:venerdì|venerdi|sabato|domenica)\s+(?:27|28|29)\s+novembre\s+2026\s*$/i.test(oldDay);
+    const day=standardMeetingDay&&MEETING_SECTION_DATES[toSectionId] ? MEETING_SECTION_DATES[toSectionId] : original.day;
+    const moved={...original,sectionId:toSectionId,...(day!==original.day?{day}:{})};
+    const shares=all.filter(s=>s.id!==shareId);
+    // Chi si sposta viene aggiunto alla fine della sezione scelta.
+    const lastDestinationIndex=shares.reduce((last,s,i)=>s.sectionId===toSectionId?i:last,-1);
+    shares.splice(lastDestinationIndex<0?shares.length:lastDestinationIndex+1,0,moved);
+    if(new TextEncoder().encode(JSON.stringify({...state,shares})).length>975000)
+      throw Error('Documento del Programma troppo grande: nessun cambiamento eseguito.');
+    tx.update(ref,{shares});
+  });
+}
+function openMoveSectionPicker(share){
+  if(!adminAuth){alert('Accedi come amministratore.');return;}
+  const sections=[...(appState.sections||[])].sort((a,b)=>(a.order||0)-(b.order||0));
+  const choices=sections.filter(s=>s.id!==share.sectionId);
+  if(!choices.length){alert('Non ci sono altre sezioni disponibili.');return;}
+  let destination=choices[0].id;
+  const overlay=e('div',{style:{position:'fixed',inset:'0',zIndex:1200,background:'rgba(0,0,0,.87)',padding:'20px',overflowY:'auto'}});
+  const card=e('div',{style:{maxWidth:'490px',margin:'25px auto',padding:'24px',background:'#171725',color:'#e8dcc8',border:'1px solid #c8a96e',borderRadius:'16px'}});
+  const feedback=e('p',{role:'status',style:{color:'#ffbb94',fontSize:'13px',marginTop:'14px'}});
+  const sel=e('select',{style:{display:'block',width:'100%',padding:'12px',background:'#232339',color:'#e8dcc8',border:'1px solid #c8a96e',borderRadius:'9px',margin:'12px 0 16px'},onChange:ev=>{destination=ev.target.value;}},...choices.map((sec,i)=>e('option',{value:sec.id,...(i===0?{selected:''}:{})},sec.icon+' '+sec.label)));
+  const close=()=>overlay.remove();
+  const btnStyle={padding:'11px 16px',borderRadius:'10px',cursor:'pointer',fontWeight:'600'};
+  const save=e('button',{style:{...btnStyle,background:'#c8a96e',color:'#161625',border:'none'},onClick:async()=>{
+    save.disabled=true;feedback.textContent='Spostamento in corso…';
+    try{
+      await relocateShareToSection(share.id,share.sectionId,destination);
+      const sec=sections.find(s=>s.id===destination);
+      close();filterSection=destination;render();
+      alert('Condivisione spostata in «'+(sec?.label||destination)+'». Testi, cinque lingue e slide conservati.');
+    }catch(err){feedback.textContent='Non spostata: '+(err?.message||String(err));save.disabled=false;}
+  }},'Conferma spostamento');
+  const cancel=e('button',{style:{...btnStyle,background:'transparent',color:'#e8dcc8',border:'1px solid #777'},onClick:close},'Annulla');
+  card.append(
+    e('h3',{style:{fontSize:'19px',color:'#e8c87a',marginBottom:'12px'}},'Sposta in un’altra sezione'),
+    e('p',{style:{fontWeight:'600',marginBottom:'10px'}},share.translations?.it?.title||share.coupleName||'Condivisione'),
+    e('p',{style:{fontSize:'13px',color:'#a09080'}},'Le relazioni nelle cinque lingue, tutte le slide, l’orario e lo stato della lettura restano associati. La data del Programma si adegua al giorno della sezione scelta.'),
+    sel,e('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap'}},save,cancel),feedback
+  );
+  overlay.append(card);
+  document.body.append(overlay);
+}
+
 async function moveShare(sectionId, idx, dir) {
   let shares = [...(appState.shares||[])];
   const secShares = shares.filter(s=>s.sectionId===sectionId);
