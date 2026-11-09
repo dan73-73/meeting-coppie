@@ -255,6 +255,23 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       ):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'LINGUA: seleziona e salva la lingua del relatore con la matita nel Programma. Il microfono riconoscerà quella lingua; puoi cambiarla di nuovo per fare prove. Dal tablet puoi usare Pausa/Riprendi, ma il microfono resta sul computer. Le coppie continuano a usare il QR abituale.'));
   }
+  // Il tablet aggiorna solo il codice della lingua della condivisione attiva.
+  // Il PC riceve la modifica attraverso l'ascoltatore Firebase esistente;
+  // sync() applica il nuovo locale al microfono senza cambiare i testi.
+  async function setRemoteSpeakerLanguage(shareId,code){
+    if(!isAdmin())throw Error('Accesso amministratore richiesto.');
+    if(!locales[code])throw Error('Lingua non valida.');
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref),state=snap.data();
+      if(!state||state.activeShareId!==shareId)
+        throw Error('La condivisione attiva è cambiata. Ricarica il telecomando.');
+      const current=(state.shares||[]).find(x=>x.id===shareId);
+      if(!current)throw Error('Condivisione non trovata.');
+      if(current.speakerLanguage===code)return;
+      tx.update(ref,{shares:state.shares.map(x=>x.id===shareId?{...x,speakerLanguage:code}:x)});
+    });
+  }
+  let remoteLanguageBusy=false;
   let remoteFullTextOpen=false;
   function remotePanel(){
     const state=getState(),share=active(),record=state.readingFollow,shares=orderedShares(state);
@@ -273,6 +290,34 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       row('⬅ PRECEDENTE',summary(previous)),
       row('🔴 IN CORSO · '+(idx+1)+' di '+shares.length,summary(share)),
       row('⏭ SUCCESSIVA',summary(next)),
+      (() => {
+        const currentLanguage=spokenLanguage(share);
+        let selectedLanguage=currentLanguage||'it';
+        const langSelect=e('select',{
+          ...(share?{}:{disabled:''}),
+          style:{width:'100%',padding:'13px',fontSize:'17px',background:'#232339',color:'#f1e7cf',border:'1px solid #c8a96e',borderRadius:'10px'},
+          onChange:ev=>{selectedLanguage=ev.target.value;}
+        },...Object.entries(names).map(([code,label])=>e('option',{value:code,...(code===selectedLanguage?{selected:''}:{})},label)));
+        const msg=e('p',{role:'status',style:{fontSize:'12px',color:'#c8a96e',minHeight:'18px'}},
+          currentLanguage?'Lingua salvata: '+names[currentLanguage]+'. Il cambio verrà applicato sul PC quando il microfono è attivo.':'Seleziona la lingua parlata dal relatore e salva.');
+        const save=e('button',{
+          ...(share&&!remoteLanguageBusy?{}:{disabled:''}),
+          style:{...buttonStyle,width:'100%',padding:'14px',fontWeight:'700',background:'#c8a96e',color:'#151522',opacity:share&&!remoteLanguageBusy?1:.45},
+          onClick:async()=>{
+            save.disabled=true;msg.textContent='Salvataggio lingua in corso…';
+            try{
+              await setRemoteSpeakerLanguage(share.id,selectedLanguage);
+              msg.textContent='✅ Lingua salvata: '+names[selectedLanguage]+'. Il microfono del PC riceverà la modifica.';
+            }catch(err){
+              msg.textContent='Lingua non modificata: '+(err.message||err);
+            }finally{save.disabled=false;}
+          }
+        },'💾 Applica lingua al relatore');
+        return e('div',{style:{border:'1px solid rgba(200,169,110,.55)',borderRadius:'12px',padding:'15px',display:'grid',gap:'10px'}},
+          e('strong',{style:{fontSize:'16px',color:'#e8c87a'}},'🌐 Lingua parlata dal relatore'),
+          e('p',{style:{fontSize:'13px',color:'#a09080'}},'Puoi cambiarla da tablet o cellulare. Il microfono resta sul computer; la lingua letta dalle coppie non cambia.'),
+          langSelect,save,msg);
+      })(),
       e('button',{style:{...buttonStyle,width:'100%',padding:'14px',background:'rgba(200,169,110,.14)',fontWeight:'600'},onClick:()=>{remoteFullTextOpen=!remoteFullTextOpen;refresh();}},remoteFullTextOpen?'📖 Nascondi condivisione completa':'📖 Visualizza condivisione completa'),
       remoteFullTextOpen&&share?e('div',{style:{background:'#141423',border:'1px solid #8f7747',borderRadius:'12px',padding:'16px',maxHeight:'62vh',overflowY:'auto',overscrollBehavior:'contain'}},
         e('h3',{style:{color:'#e8c87a',fontSize:'17px',marginBottom:'12px'}},share.translations?.it?.title||'Condivisione in corso'),
