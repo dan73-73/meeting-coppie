@@ -803,6 +803,7 @@ function renderAdmin() {
         e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Seleziona la comunità. I testi nelle cinque lingue e le slide restano su GitHub. Firebase conserva soltanto i metadati della relazione non attiva."),
         (()=>{
           const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
+            e('option',{value:'introduzioneFrancesco'},'Sabato pomeriggio – Annalisa, introduzione a don Francesco De Vita (solo testo, 5 lingue)'),
             e('option',{value:'nordovest'},'Sabato mattina – Samantha e Cristian, Italia Nord-Ovest'),
             e('option',{value:'centro'},'Sabato mattina – Roby e Silvia, Italia Centro'),
             e('option',{value:'madrid'},'Madrid – presentazione in spagnolo (sezione provvisoria: sabato mattina)'),
@@ -957,6 +958,14 @@ const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 const PUBLIC_MEETING_PRESETS={
+  introduzioneFrancesco:{
+    filename:'introduzione-don-francesco-annalisa-2026.json',
+    archive:null,
+    id:'github-introduzione-don-francesco-annalisa-2026',
+    sectionId:'sab-pom',
+    expectedTitle:'Introduzione a don Francesco De Vita – Annalisa',
+    afterBlocks:[]
+  },
   nordovest:{
     filename:'italia-nord-ovest-samantha-cristian.json',
     archive:'NORD_OVEST_MEETING_slides.zip',
@@ -1093,7 +1102,7 @@ async function addPublicMeetingShare(key){
   });
   publicTextCache.set(spec.filename,source);
   importItems=[];importZip=null;importError='';importBusy=false;adminTab='list';render();
-  alert('Collegamento riuscito: testo in cinque lingue su GitHub'+(positions.length?' e '+positions.length+' slide':' senza slide associate')+'. Sezione iniziale: sabato mattina. Verifica dal Programma.');
+  alert('Collegamento riuscito: testo in cinque lingue su GitHub'+(positions.length?' e '+positions.length+' slide':' senza slide associate')+'. Sezione: '+(spec.sectionId==='sab-pom'?'sabato pomeriggio':spec.sectionId==='ven-sera'?'venerdì sera':'sabato mattina')+'. Verifica dal Programma.');
 }
 async function addItaliaCentroFromGitHub(){
   if(!adminAuth)throw Error('Accedi come amministratore.');
