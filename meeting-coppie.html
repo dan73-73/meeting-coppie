@@ -803,6 +803,7 @@ function renderAdmin() {
         e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Seleziona la comunità. I testi nelle cinque lingue e le slide restano su GitHub. Firebase conserva soltanto i metadati della relazione non attiva."),
         (()=>{
           const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
+            e('option',{value:'preghieraSabato'},'Sabato mattina – Preghiera: Ti do tutto, Signore (5 lingue)'),
             e('option',{value:'benvenutoAnnalisa'},'Venerdì sera – Annalisa, benvenuto e seme della speranza (solo testo, 5 lingue)'),
             e('option',{value:'introduzioneFrancesco'},'Sabato pomeriggio – Annalisa, introduzione a don Francesco De Vita (solo testo, 5 lingue)'),
             e('option',{value:'donFrancesco'},'Sabato pomeriggio – Don Francesco De Vita, biografia e relazione (solo testo, 5 lingue)'),
@@ -960,6 +961,14 @@ const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 const PUBLIC_MEETING_PRESETS={
+  preghieraSabato:{
+    filename:'preghiera-sabato-ti-do-tutto-signore-2026.json',
+    archive:null,
+    id:'github-preghiera-sabato-ti-do-tutto-signore-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Preghiera – Ti do tutto, Signore',
+    afterBlocks:[]
+  },
   benvenutoAnnalisa:{
     filename:'benvenuto-annalisa-venerdi-2026.json',
     archive:null,
