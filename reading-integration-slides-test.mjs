@@ -242,6 +242,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function panel(){
     const share=active(),r=getState().readingFollow;
     const savedLanguage=spokenLanguage(share);
+    const displayLanguage=savedLanguage||source;
     const languageLabel=e('strong',{style:{fontSize:'14px',color:'#e8c87a'}},savedLanguage?names[savedLanguage]:'Da impostare dalla matita');
     const btn=(text,fn)=>e('button',{style:buttonStyle,onClick:action(fn)},text);
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
@@ -251,7 +252,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
-        body(share,source,share.translations?.[source])
+        body(share,displayLanguage,share.translations?.[displayLanguage])
       ):null,
       e('p',{style:{fontSize:'12px',color:'#a09080',marginTop:'8px'}},'LINGUA: seleziona e salva la lingua del relatore con la matita nel Programma. Il microfono riconoscerà quella lingua; puoi cambiarla di nuovo per fare prove. Dal tablet puoi usare Pausa/Riprendi, ma il microfono resta sul computer. Le coppie continuano a usare il QR abituale.'));
   }
@@ -275,6 +276,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   let remoteFullTextOpen=false;
   function remotePanel(){
     const state=getState(),share=active(),record=state.readingFollow,shares=orderedShares(state);
+    const displayLang=spokenLanguage(share)||'it';
     const cmd=state.readingRemote,ack=state.readingRemoteAck;
     const confirmation=cmd?.id && ack?.id===cmd.id ? ('✅ ESEGUITO DAL COMPUTER · '+(ack?.mode||'')) : (cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
     const idx=shares.findIndex(x=>x.id===share?.id),previous=shares[idx-1],next=shares[idx+1];
@@ -320,18 +322,18 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       })(),
       e('button',{style:{...buttonStyle,width:'100%',padding:'14px',background:'rgba(200,169,110,.14)',fontWeight:'600'},onClick:()=>{remoteFullTextOpen=!remoteFullTextOpen;refresh();}},remoteFullTextOpen?'📖 Nascondi condivisione completa':'📖 Visualizza condivisione completa'),
       remoteFullTextOpen&&share?e('div',{style:{background:'#141423',border:'1px solid #8f7747',borderRadius:'12px',padding:'16px',maxHeight:'62vh',overflowY:'auto',overscrollBehavior:'contain'}},
-        e('h3',{style:{color:'#e8c87a',fontSize:'17px',marginBottom:'12px'}},share.translations?.it?.title||'Condivisione in corso'),
+        e('h3',{style:{color:'#e8c87a',fontSize:'17px',marginBottom:'12px'}},share.translations?.[displayLang]?.title||share.translations?.it?.title||'Condivisione in corso'),
         e('div',{style:{fontSize:'15px',lineHeight:'1.85',color:'#f0e4cc',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},
-          ...(valid(record,share)?record.blocks.map((block,i)=>e('span',{style:i===record.index&&record.blocks.length>1?{background:'rgba(232,200,117,.34)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},block.it||'')):[e('span',{},share.translations?.it?.body||'Testo non disponibile')]))
+          ...(valid(record,share)?record.blocks.map((block,i)=>e('span',{style:i===record.index&&record.blocks.length>1?{background:'rgba(232,200,117,.34)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},block[displayLang]||'')):[e('span',{},share.translations?.[displayLang]?.body||'Testo non disponibile')]))
       ):null,
-      record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.it||'')):null,
+      record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.[displayLang]||'')):null,
       btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),
       btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),
       btn('CONDIVISIONE SUCCESSIVA ➡','next',!next),
       e('div',{style:{border:'1px solid #b77',borderRadius:'14px',padding:'14px',display:'grid',gap:'10px'}},
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA GUIDA MANUALE','manual'),
-        row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.it||''):'Nessun testo preparato'),
+        row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.[displayLang]||''):'Nessun testo preparato'),
         btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),btn('CONDIVISIONE SUCCESSIVA ➡','next',!next),
         e('p',{style:{fontSize:'12px',color:'#a09080'}},'EMERGENZA: questi comandi cambiano l’intera condivisione, inclusi relatore, orario, titolo e testo nelle cinque lingue. Per tornare al microfono premi RIPRENDI.')),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px'}},status));
