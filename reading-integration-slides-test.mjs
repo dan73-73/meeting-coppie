@@ -225,6 +225,36 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     refresh();
     message('Passaggi brevi pronti. Le slide non sono state spostate.');
   }
+  // Correzione circoscritta alla formazione comunità, senza cambiare nessuna parola.
+  async function fixFormazioneHighlight(){
+    if(!isAdmin())throw Error('Accesso amministratore richiesto.');
+    stop();
+    const selected=active();
+    if(!selected||selected.translations?.it?.title!=='Formazione Comunità 2026')
+      throw Error('Attiva prima Formazione Comunità 2026. Nessun dato modificato.');
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref),state=snap.data();
+      if(!state||state.activeShareId!==selected.id||(state.displayMode||'one')!=='one')
+        throw Error('La condivisione attiva è cambiata.');
+      const live=(state.shares||[]).find(x=>x.id===selected.id);
+      if(!live||live.translations?.it?.title!=='Formazione Comunità 2026')
+        throw Error('La condivisione non corrisponde. Nessun salvataggio.');
+      if(Array.isArray(live.inlineSlides)&&live.inlineSlides.length||Array.isArray(live.publicSlidePositions)&&live.publicSlidePositions.length)
+        throw Error('Questa relazione contiene slide: occorre preservarne prima le posizioni. Nessun dato modificato.');
+      const base=valid(state.readingFollow,live)?state.readingFollow.blocks:
+        (Array.isArray(live.readingBlocks)&&live.readingBlocks.length?live.readingBlocks:suggestBlocks(live.translations).blocks);
+      validateBlocks(base,live.translations);
+      const blocks=shortenLongReadingBlocks(base,live.translations,105);
+      if(blocks.length<=base.length)throw Error('I passaggi risultano già brevi. Nessuna modifica necessaria.');
+      const patch={shares:state.shares.map(x=>x.id===live.id?{...x,readingBlocks:blocks}:x),
+        readingFollow:{shareId:live.id,session:crypto.randomUUID(),blocks,index:0,revision:(state.readingFollow?.revision||0)+1}};
+      if(new TextEncoder().encode(JSON.stringify({...state,...patch})).length>800000)
+        throw Error('Spazio dati insufficiente. Nessun dato modificato.');
+      tx.update(ref,patch);
+    });
+    refresh();message('Suddivisione completata nelle cinque lingue: rileggi dal primo passaggio.');
+    alert('Evidenziazione corretta per Formazione Comunità 2026. Tutte e cinque le lingue conservate; lettura riposizionata all’inizio.');
+  }
   function prepare(){
     const share=active();if(!share)throw Error('Scegli “Una sola” e attiva la condivisione che il relatore leggerà.');stop();
     dialog?.remove();const current=getState().readingFollow;const cached={shareId:share.id,blocks:share.readingBlocks};const stored=valid(current,share)?current:valid(cached,share)?cached:null;const proposal=stored?.blocks?.length>1||((share.translations?.it?.body||'').length<=260&&stored)?{blocks:stored.blocks,mode:'saved'}:suggestBlocks(share.translations||{});
@@ -248,7 +278,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return e('div',{style:{padding:'14px 16px',borderRadius:'12px',background:'rgba(200,169,110,.06)',border:'1px solid rgba(200,169,110,.25)',marginBottom:'20px'}},
       e('h3',{style:{color:'#c8a96e',fontSize:'16px',marginBottom:'8px'}},'🎙️ Segui la lettura'),
       e('p',{style:{color:'#a09080',fontSize:'13px',marginBottom:'10px'}},share?'Condivisione attiva: '+(share.translations?.it?.title||''):'Scegli “Una sola” e attiva la condivisione da leggere.'),
-      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('span',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',languageLabel),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
+      e('div',{style:{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},e('span',{style:{fontSize:'13px',color:'#a09080'}},'Lingua del relatore: ',languageLabel),btn('▶ Avvia lettura',()=>valid(getState().readingFollow,active())?start():prepare()),btn('⏹ Ferma lettura',stop),btn('⏸ Pausa da tablet',()=>remoteCommand('pause')),btn('▶ Riprendi da tablet',()=>remoteCommand('resume')),btn('⏭ Prossima condivisione (prova)',()=>remoteCommand('next')),btn('🆘 Manuale',()=>remoteCommand('manual')),btn('← Condivisione precedente',()=>remoteCommand('previous')),btn('Condivisione successiva →',()=>remoteCommand('next')),btn('⚙ Prepara passaggi',prepare),...(share?.translations?.it?.title==='Formazione Comunità 2026'?[btn('✂ Correggi evidenziazione formazione',fixFormazioneHighlight)]:[]),btn('← Precedente',()=>position((getState().readingFollow?.index||0)-1,true)),btn('Successivo →',()=>position((getState().readingFollow?.index??-1)+1,true))),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px',marginTop:'10px'}},status),
       valid(r,share)?e('div',{style:{marginTop:'14px',padding:'14px',background:'#10101e',border:'1px solid #625536',borderRadius:'12px'}},
         e('p',{style:{color:'#c8a96e',fontSize:'13px',marginBottom:'10px'}},'📖 TESTO SINCRONIZZATO SUL COMPUTER · Passaggio '+((r.index??0)+1)+' di '+r.blocks.length),
