@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "ven-sera",
+      "coupleName": "Annalisa",
+      "day": "Venerdì 27 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Benvenuto di Annalisa – Il seme della speranza",
+          "body": "Un benvenuto di cuore a ciascuno di voi!\n\nDevo confessarvi che, se dovessi misurare la gioia che provo nell’avervi qui questa sera su una scala da 1 a 10, la mia intensità sarebbe 8.\n\nTra i tantissimi temi che avremmo potuto scegliere, ci tenevamo davvero tanto a organizzare questo incontro dopo il Giubileo.\n\nIl nostro desiderio era quello di evitare che l’esperienza vissuta come Pellegrini di Speranza rimanesse soltanto un bel ricordo da conservare in un cassetto.\n\nVolevamo, invece, che quell’esperienza diventasse un vero e proprio seme per il futuro.\n\nPerché la speranza non è soltanto una parola astratta, ma è qualcosa di vivo. È un germoglio che ha bisogno di essere coltivato, protetto e custodito.\n\nEd è bellissimo poterlo fare insieme, qui, questa sera."
+        },
+        "fr": {
+          "title": "Bienvenue d’Annalisa – La graine de l’espérance",
+          "body": "Je souhaite la bienvenue de tout cœur à chacune et à chacun d’entre vous !\n\nJe dois vous avouer que, si je devais mesurer la joie que je ressens de vous avoir ici ce soir sur une échelle de 1 à 10, son intensité serait de 8.\n\nParmi tous les thèmes que nous aurions pu choisir, nous tenions vraiment à organiser cette rencontre après le Jubilé.\n\nNotre désir était de faire en sorte que l’expérience vécue en tant que Pèlerins d’espérance ne reste pas simplement un beau souvenir rangé dans un tiroir.\n\nNous voulions, au contraire, que cette expérience devienne une véritable graine pour l’avenir.\n\nCar l’espérance n’est pas seulement un mot abstrait, mais quelque chose de vivant. C’est une jeune pousse qu’il faut cultiver, protéger et préserver.\n\nEt c’est merveilleux de pouvoir le faire ensemble, ici, ce soir."
+        },
+        "es": {
+          "title": "Bienvenida de Annalisa – La semilla de la esperanza",
+          "body": "¡Bienvenidos de todo corazón!\n\nDebo confesaros que, si tuviera que medir la alegría que siento al teneros aquí esta noche en una escala del 1 al 10, mi intensidad sería un 8.\n\nEntre los muchísimos temas que podríamos haber elegido, teníamos un gran deseo de organizar este encuentro después del Jubileo.\n\nNuestro deseo era evitar que la experiencia vivida como Peregrinos de Esperanza se quedara simplemente en un bonito recuerdo guardado en un cajón.\n\nQueríamos, por el contrario, que aquella experiencia se convirtiera en una verdadera semilla para el futuro.\n\nPorque la esperanza no es solo una palabra abstracta, sino algo vivo. Es un brote que necesita ser cultivado, protegido y cuidado.\n\nY es maravilloso poder hacerlo juntos, aquí, esta noche."
+        },
+        "en": {
+          "title": "Annalisa’s Welcome – The Seed of Hope",
+          "body": "A heartfelt welcome to each and every one of you!\n\nI must confess that if I were to measure the joy I feel at having you here this evening on a scale from 1 to 10, my intensity would be an 8.\n\nAmong the many themes we could have chosen, we truly wanted to organize this gathering after the Jubilee.\n\nOur wish was to make sure that our experience as Pilgrims of Hope would not remain merely a beautiful memory tucked away in a drawer.\n\nInstead, we wanted that experience to become a real seed for the future.\n\nBecause hope is not just an abstract word; it is something alive. It is a tender shoot that needs to be nurtured, protected, and cared for.\n\nAnd how wonderful it is to do this together, here, this evening."
+        },
+        "pt": {
+          "title": "Boas-vindas de Annalisa – A semente da esperança",
+          "body": "Sejam todos muito bem-vindos, de todo o coração!\n\nTenho de vos confessar que, se tivesse de medir a alegria que sinto por vos ter aqui esta noite numa escala de 1 a 10, a minha intensidade seria 8.\n\nEntre os muitos temas que poderíamos ter escolhido, fazíamos realmente questão de organizar este encontro depois do Jubileu.\n\nO nosso desejo era evitar que a experiência vivida como Peregrinos de Esperança ficasse apenas como uma bela recordação guardada numa gaveta.\n\nQueríamos, pelo contrário, que essa experiência se tornasse uma verdadeira semente para o futuro.\n\nPorque a esperança não é apenas uma palavra abstrata, mas algo vivo. É um rebento que precisa de ser cultivado, protegido e cuidado.\n\nE é maravilhoso podermos fazê-lo juntos, aqui, esta noite."
+        }
+      }
+    }
+  ]
+}
