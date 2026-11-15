@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "ven-sera",
+      "coupleName": "Marcelo",
+      "day": "Venerdì 27 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione di Paul e Tracy Satterfield – Marcelo",
+          "body": "Dopo i doverosi ringraziamenti ai padroni di casa e alla comunità locale, passiamo ora a salutare chi ha fatto il viaggio più lungo per essere qui con noi arrivando direttamente dall'America. Chiediamo un caloroso applauso di benvenuto per Paul e Tracy Satterfield, coordinatori internazionali a cui cedo con piacere la parola."
+        },
+        "fr": {
+          "title": "Présentation de Paul et Tracy Satterfield – Marcelo",
+          "body": "Après les remerciements que nous devions à nos hôtes et à la communauté locale, nous passons maintenant à ceux qui ont fait le plus long voyage pour être parmi nous, en venant directement d’Amérique. Je vous invite à accueillir très chaleureusement, sous vos applaudissements, Paul et Tracy Satterfield, coordinateurs internationaux, à qui je cède la parole avec grand plaisir."
+        },
+        "es": {
+          "title": "Presentación de Paul y Tracy Satterfield – Marcelo",
+          "body": "Después de los merecidos agradecimientos a nuestros anfitriones y a la comunidad local, pasamos ahora a saludar a quienes han realizado el viaje más largo para estar aquí con nosotros, llegando directamente desde América. Os pedimos un caluroso aplauso de bienvenida para Paul y Tracy Satterfield, coordinadores internacionales, a quienes cedo la palabra con mucho gusto."
+        },
+        "en": {
+          "title": "Introduction of Paul and Tracy Satterfield – Marcelo",
+          "body": "After offering our heartfelt thanks to our hosts and the local community, we now turn to welcome those who have travelled the farthest to be here with us, coming all the way from America. Please join me in giving a very warm round of applause to Paul and Tracy Satterfield, our International Coordinators, to whom I am delighted to hand over the floor."
+        },
+        "pt": {
+          "title": "Apresentação de Paul e Tracy Satterfield – Marcelo",
+          "body": "Depois dos merecidos agradecimentos aos nossos anfitriões e à comunidade local, passamos agora a saudar aqueles que fizeram a viagem mais longa para estarem aqui connosco, vindos diretamente da América. Pedimos uma calorosa salva de palmas de boas-vindas para Paul e Tracy Satterfield, coordenadores internacionais, a quem passo a palavra com muito gosto."
+        }
+      }
+    }
+  ]
+}
