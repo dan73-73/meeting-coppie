@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "ven-sera",
+      "coupleName": "Marcelo",
+      "day": "Venerdì 27 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione di Mark e Maria Luisa – Marcelo",
+          "body": "Ora ho il grande piacere di presentarvi Mark e Maria Luisa, amici carissimi.\n\nFino allo scorso novembre sono stati loro a guidare la nostra comunità europea e, prima di passarci il testimone, hanno intrapreso una nuova ed entusiasmante missione al servizio internazionale di Retrouvaille per il resto del mondo.\n\nOggi accogliamo con un grandissimo applauso Mark e Maria Luisa!"
+        },
+        "fr": {
+          "title": "Présentation de Mark et Maria Luisa – Marcelo",
+          "body": "J’ai maintenant le grand plaisir de vous présenter Mark et Maria Luisa, de très chers amis.\n\nJusqu’en novembre dernier, ce sont eux qui ont guidé notre communauté européenne et, avant de nous passer le relais, ils ont entrepris une nouvelle mission passionnante au service international de Retrouvaille pour le reste du monde.\n\nAujourd’hui, accueillons Mark et Maria Luisa sous un tonnerre d’applaudissements !"
+        },
+        "es": {
+          "title": "Presentación de Mark y Maria Luisa – Marcelo",
+          "body": "Ahora tengo el gran placer de presentaros a Mark y Maria Luisa, unos amigos muy queridos.\n\nHasta el pasado mes de noviembre fueron ellos quienes guiaron nuestra comunidad europea y, antes de pasarnos el testigo, emprendieron una nueva y apasionante misión en el servicio internacional de Retrouvaille para el resto del mundo.\n\n¡Hoy recibimos a Mark y Maria Luisa con un fortísimo aplauso!"
+        },
+        "en": {
+          "title": "Introduction of Mark and Maria Luisa – Marcelo",
+          "body": "I now have the great pleasure of introducing Mark and Maria Luisa, very dear friends of ours.\n\nUntil last November, they were the ones who led our European community and, before handing over the baton to us, they began an exciting new mission in Retrouvaille’s international service for the rest of the world.\n\nToday, let’s give Mark and Maria Luisa a tremendous round of applause!"
+        },
+        "pt": {
+          "title": "Apresentação de Mark e Maria Luisa – Marcelo",
+          "body": "Tenho agora o grande prazer de vos apresentar Mark e Maria Luisa, amigos muito queridos.\n\nAté novembro passado, foram eles que orientaram a nossa comunidade europeia e, antes de nos passarem o testemunho, abraçaram uma nova e entusiasmante missão ao serviço internacional de Retrouvaille para o resto do mundo.\n\nHoje, recebamos Mark e Maria Luisa com uma enorme salva de palmas!"
+        }
+      }
+    }
+  ]
+}
