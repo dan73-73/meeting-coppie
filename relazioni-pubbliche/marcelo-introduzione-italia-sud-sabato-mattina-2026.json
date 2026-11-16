@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Italia Sud – Marcelo",
+          "body": "Ora ci spostiamo nel Sud Italia, calore puro e accoglienza travolgente.\n\nChiamiamo al tavolo Vito e Veronica, grazie per essere con noi e per la vostra testimonianza."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté Italie Sud – Marcelo",
+          "body": "Nous nous dirigeons maintenant vers le Sud de l’Italie, une terre de chaleur humaine et d’accueil débordant.\n\nNous invitons Vito et Veronica à nous rejoindre à la table. Merci d’être parmi nous et de partager votre témoignage."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad Italia Sur – Marcelo",
+          "body": "Ahora nos trasladamos al sur de Italia, pura calidez y una acogida desbordante.\n\nInvitamos a Vito y Veronica a acercarse a la mesa. Gracias por estar con nosotros y por vuestro testimonio."
+        },
+        "en": {
+          "title": "Introduction of the Southern Italy Community – Marcelo",
+          "body": "We now move to Southern Italy, full of warmth and an overwhelming spirit of welcome.\n\nWe invite Vito and Veronica to join us at the table. Thank you for being with us and for sharing your testimony."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade Itália Sul – Marcelo",
+          "body": "Vamos agora até ao Sul de Itália, terra de puro calor humano e de um acolhimento extraordinário.\n\nConvidamos Vito e Veronica a juntarem-se a nós à mesa. Obrigado por estarem connosco e pelo vosso testemunho."
+        }
+      }
+    }
+  ]
+}
