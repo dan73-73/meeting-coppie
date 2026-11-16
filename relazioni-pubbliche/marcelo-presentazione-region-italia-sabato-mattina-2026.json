@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione REGION ITALIA – Marcelo",
+          "body": "Torniamo ora in Italia per accogliere la REGION ITALIA, guidata con dedizione da Nicola e Antonella.\n\nLi invitiamo qui al tavolo e lasciamo a loro la parola per raccontarci il cammino e la bellezza della nostra penisola."
+        },
+        "fr": {
+          "title": "Présentation de REGION ITALIA – Marcelo",
+          "body": "Nous revenons maintenant en Italie pour accueillir la REGION ITALIA, guidée avec dévouement par Nicola et Antonella.\n\nNous les invitons à nous rejoindre ici à la table et leur donnons la parole pour nous raconter leur parcours et la beauté de notre péninsule."
+        },
+        "es": {
+          "title": "Presentación de REGION ITALIA – Marcelo",
+          "body": "Volvemos ahora a Italia para dar la bienvenida a REGION ITALIA, dirigida con dedicación por Nicola y Antonella.\n\nLos invitamos a acercarse aquí a la mesa y les cedemos la palabra para que nos cuenten su recorrido y la belleza de nuestra península."
+        },
+        "en": {
+          "title": "Introduction of REGION ITALIA – Marcelo",
+          "body": "We now return to Italy to welcome REGION ITALIA, led with dedication by Nicola and Antonella.\n\nWe invite them to join us here at the table and give them the floor to tell us about their journey and the beauty of our peninsula."
+        },
+        "pt": {
+          "title": "Apresentação da REGION ITALIA – Marcelo",
+          "body": "Regressamos agora a Itália para acolher a REGION ITALIA, orientada com dedicação por Nicola e Antonella.\n\nConvidamo-los a juntar-se a nós aqui à mesa e damos-lhes a palavra para nos contarem o seu percurso e a beleza da nossa península."
+        }
+      }
+    }
+  ]
+}
