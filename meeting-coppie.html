@@ -804,6 +804,7 @@ function renderAdmin() {
         (()=>{
           const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
             e('option',{value:'annuncioPortogalloAnnalisa'},'Sabato sera – Annalisa, nascita ufficiale della Comunità Retrouvaille Portogallo (5 lingue)'),
+            e('option',{value:'introduzioneInghilterraGallesAnnalisa'},'Sabato mattina – Annalisa, introduzione Sharon e James (Inghilterra e Galles, 5 lingue)'),
             e('option',{value:'introduzioneSudMarcelo'},'Sabato mattina – Marcelo, introduzione Italia Sud (5 lingue)'),
             e('option',{value:'introduzioneCentroAnnalisa'},'Sabato mattina – Annalisa, introduzione Italia Centro (5 lingue)'),
             e('option',{value:'introduzioneNordEstAnnalisa'},'Sabato mattina – Annalisa, introduzione Italia Nord-Est (5 lingue)'),
@@ -976,6 +977,14 @@ const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 const PUBLIC_MEETING_PRESETS={
+  introduzioneInghilterraGallesAnnalisa:{
+    filename:'annalisa-introduzione-inghilterra-galles-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-inghilterra-galles-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Inghilterra e Galles – Annalisa',
+    afterBlocks:[]
+  },
   introduzioneSudMarcelo:{
     filename:'marcelo-introduzione-italia-sud-sabato-mattina-2026.json',
     archive:null,
