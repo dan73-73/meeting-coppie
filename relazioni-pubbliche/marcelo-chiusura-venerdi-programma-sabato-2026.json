@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "ven-sera",
+      "coupleName": "Marcelo",
+      "day": "Venerdì 27 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Chiusura del venerdì sera – Programma di sabato e benedizione – Marcelo",
+          "body": "Ricordiamo il programma per domani, sabato. Ci troviamo alle 7.30 per la Santa Messa, alle 8.10 per la colazione e 9.10 in sala per l'inizio delle attività. Ora Don Giuseppe ci dà la benedizione e concludiamo."
+        },
+        "fr": {
+          "title": "Clôture du vendredi soir – Programme du samedi et bénédiction – Marcelo",
+          "body": "Rappelons le programme de demain, samedi. Nous nous retrouvons à 7 h 30 pour la messe, à 8 h 10 pour le petit-déjeuner et à 9 h 10 dans la salle pour le début des activités. Maintenant, Don Giuseppe va nous donner sa bénédiction, puis nous terminerons."
+        },
+        "es": {
+          "title": "Cierre del viernes por la noche – Programa del sábado y bendición – Marcelo",
+          "body": "Recordamos el programa de mañana, sábado. Nos reuniremos a las 7:30 para la Santa Misa, a las 8:10 para el desayuno y a las 9:10 en la sala para el comienzo de las actividades. Ahora Don Giuseppe nos dará la bendición y concluiremos."
+        },
+        "en": {
+          "title": "Friday Evening Closing – Saturday Schedule and Blessing – Marcelo",
+          "body": "Let us remember tomorrow's schedule, Saturday. We will meet at 7:30 for Holy Mass, at 8:10 for breakfast, and at 9:10 in the meeting room for the start of our activities. Now Father Giuseppe will give us his blessing, and we will conclude."
+        },
+        "pt": {
+          "title": "Encerramento de sexta-feira à noite – Programa de sábado e bênção – Marcelo",
+          "body": "Recordamos o programa de amanhã, sábado. Encontramo-nos às 7h30 para a Santa Missa, às 8h10 para o pequeno-almoço e às 9h10 na sala para o início das atividades. Agora, o Padre Giuseppe vai dar-nos a bênção e terminaremos."
+        }
+      }
+    }
+  ]
+}
