@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Introduzione della Comunità di Valencia – Marcelo",
+          "body": "Il prossimo intervento arriva da Valencia. I coordinatori Ima e Kike non hanno potuto raggiungerci di persona, ma hanno tenuto a condividere comunque il loro contributo inviandoci un testo scritto. A darne lettura in loro rappresentanza saranno anche essi provenienti dalla Spagna. Lascio a loro la parola."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté de Valence – Marcelo",
+          "body": "La prochaine intervention nous vient de Valence. Les coordinateurs Ima et Kike n'ont pas pu nous rejoindre en personne, mais ils ont tout de même tenu à partager leur contribution en nous envoyant un texte écrit. Ce sont des personnes venant elles aussi d'Espagne qui en feront la lecture en leur nom. Je leur laisse la parole."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad de Valencia – Marcelo",
+          "body": "La próxima intervención llega desde Valencia. Los coordinadores Ima y Kike no han podido acompañarnos en persona, pero han querido compartir igualmente su aportación enviándonos un texto escrito. Lo leerán en su representación otras personas que también vienen de España. Les cedo la palabra."
+        },
+        "en": {
+          "title": "Introduction of the Valencia Community – Marcelo",
+          "body": "Our next contribution comes from Valencia. The coordinators Ima and Kike were unable to join us in person, but they still wished to share their contribution by sending us a written text. It will be read on their behalf by others who also come from Spain. I now give them the floor."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade de Valência – Marcelo",
+          "body": "A próxima intervenção vem de Valência. Os coordenadores Ima e Kike não puderam estar connosco pessoalmente, mas fizeram questão de partilhar na mesma o seu contributo, enviando-nos um texto escrito. A leitura será feita em sua representação por pessoas que também vêm de Espanha. Passo-lhes a palavra."
+        }
+      }
+    }
+  ]
+}
