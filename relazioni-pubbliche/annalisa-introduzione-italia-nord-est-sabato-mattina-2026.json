@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Annalisa",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Italia Nord-Est – Annalisa",
+          "body": "Ci spostiamo ora alla comunità Italia Nord-Est.\n\nSimone e Agostina, i coordinatori, non sono potuti essere presenti qui con noi oggi, ma ci tengono tantissimo a far arrivare il loro calore e la loro voce.\n\nPer questo motivo vi faremo ascoltare un loro audio in cui ci presentano la loro comunità."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté Italie Nord-Est – Annalisa",
+          "body": "Nous passons maintenant à la communauté Italie Nord-Est.\n\nSimone et Agostina, les coordinateurs, n'ont pas pu être présents parmi nous aujourd'hui, mais ils tiennent énormément à nous faire parvenir leur chaleur et leur voix.\n\nC'est pourquoi nous allons vous faire écouter un enregistrement audio dans lequel ils nous présentent leur communauté."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad Italia Nordeste – Annalisa",
+          "body": "Nos trasladamos ahora a la comunidad Italia Nordeste.\n\nSimone y Agostina, sus coordinadores, no han podido estar hoy aquí con nosotros, pero tienen muchísimas ganas de hacernos llegar su cariño y su voz.\n\nPor eso vamos a escuchar un audio suyo en el que nos presentan su comunidad."
+        },
+        "en": {
+          "title": "Introduction of the Northeast Italy Community – Annalisa",
+          "body": "We now turn to the Northeast Italy community.\n\nSimone and Agostina, the coordinators, could not be here with us today, but they very much wanted to share their warmth and their voices with us.\n\nFor this reason, we will play an audio recording from them in which they introduce their community."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade Itália Nordeste – Annalisa",
+          "body": "Passamos agora à comunidade Itália Nordeste.\n\nSimone e Agostina, os coordenadores, não puderam estar aqui connosco hoje, mas fazem muita questão de nos transmitir o seu carinho e a sua voz.\n\nPor isso, vamos ouvir uma gravação áudio deles, na qual nos apresentam a sua comunidade."
+        }
+      }
+    }
+  ]
+}
