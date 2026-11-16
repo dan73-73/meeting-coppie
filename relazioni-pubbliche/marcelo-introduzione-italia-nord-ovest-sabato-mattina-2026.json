@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Italia Nord-Ovest – Marcelo",
+          "body": "Andiamo ora nel Nord-Ovest Italia. Chiamiamo al tavolo, Samantha e Christian.\n\nGrazie per il vostro entusiasmo e per il servizio che donate alla vostra comunità."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté Italie Nord-Ouest – Marcelo",
+          "body": "Allons maintenant dans le Nord-Ouest de l'Italie. Nous invitons à la table Samantha et Christian.\n\nMerci pour votre enthousiasme et pour le service que vous offrez à votre communauté."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad Italia Noroeste – Marcelo",
+          "body": "Vamos ahora al noroeste de Italia. Invitamos a la mesa a Samantha y Christian.\n\nGracias por vuestro entusiasmo y por el servicio que ofrecéis a vuestra comunidad."
+        },
+        "en": {
+          "title": "Introduction of the Northwest Italy Community – Marcelo",
+          "body": "Let us now turn to Northwest Italy. We invite Samantha and Christian to join us at the table.\n\nThank you for your enthusiasm and for the service you give to your community."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade do Noroeste de Itália – Marcelo",
+          "body": "Vamos agora até ao Noroeste de Itália. Convidamos Samantha e Christian a juntarem-se a nós à mesa.\n\nObrigado pelo vosso entusiasmo e pelo serviço que prestam à vossa comunidade."
+        }
+      }
+    }
+  ]
+}
