@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "09:10",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Buongiorno – Inizio lavori sabato mattina – Marcelo",
+          "body": "Buongiorno a tutti e bentornati in sala. Spero che abbiate riposato bene e che abbiate fatto il pieno di energie, perché la mattinata di oggi chiede tutta la nostra attenzione, ci dedicheremo a ciò che da vera sostanza al nostro incontro: LA CONDIVISIONE.\n\nSe ieri abbiamo lavorato su una visione d'insieme, oggi il palco è tutto vostro.\n\nQuesta mattina diamo voce alle singole comunità, a tutte le realtà nazionali qui presenti. Ogni comunità avrà modo di raccontarsi, di portare la propria esperienza sul campo, condividendo con trasparenza non solo i punti di forza e i traguardi raggiunti, ma anche i punti deboli e le difficoltà, le sfide che affronta ogni giorno.\n\nDal confronto tra le diverse realtà nascono soluzioni migliori e il vero senso di appartenenza che ci unisce come famiglia di Retrouvaille.\n\nNon rubo altro tempo alle vostre voci e apriamo subito questa sessione.\n\nBuon ascolto e buon lavoro a tutti."
+        },
+        "fr": {
+          "title": "Bonjour – Ouverture des travaux du samedi matin – Marcelo",
+          "body": "Bonjour à toutes et à tous, et bon retour dans la salle. J'espère que vous vous êtes bien reposés et que vous avez fait le plein d'énergie, car cette matinée demande toute notre attention : nous allons nous consacrer à ce qui donne une véritable substance à notre rencontre : LE PARTAGE.\n\nSi, hier, nous avons travaillé sur une vision d'ensemble, aujourd'hui, la scène est entièrement à vous.\n\nCe matin, nous donnons la parole aux différentes communautés, à toutes les réalités nationales présentes ici. Chaque communauté aura l'occasion de se présenter, de partager son expérience sur le terrain, en exposant avec transparence non seulement ses points forts et les résultats obtenus, mais aussi ses points faibles, ses difficultés et les défis qu'elle affronte chaque jour.\n\nC'est de la confrontation constructive de nos différentes réalités que naissent de meilleures solutions et ce véritable sentiment d'appartenance qui nous unit comme une famille Retrouvaille.\n\nJe ne vais pas prendre davantage de temps sur vos interventions et nous ouvrons tout de suite cette session.\n\nBonne écoute et bon travail à toutes et à tous."
+        },
+        "es": {
+          "title": "Buenos días – Inicio de los trabajos del sábado por la mañana – Marcelo",
+          "body": "Buenos días a todos y bienvenidos de nuevo a la sala. Espero que hayáis descansado bien y recuperado energías, porque la mañana de hoy requiere toda nuestra atención: nos dedicaremos a lo que da verdadero sentido a nuestro encuentro: COMPARTIR.\n\nSi ayer trabajamos sobre una visión de conjunto, hoy el escenario es completamente vuestro.\n\nEsta mañana damos voz a cada una de las comunidades, a todas las realidades nacionales aquí presentes. Cada comunidad tendrá la oportunidad de presentarse y aportar su experiencia sobre el terreno, compartiendo con transparencia no solo sus puntos fuertes y los logros alcanzados, sino también sus puntos débiles, sus dificultades y los desafíos que afronta cada día.\n\nDel intercambio entre las distintas realidades nacen mejores soluciones y el verdadero sentido de pertenencia que nos une como familia de Retrouvaille.\n\nNo quiero quitar más tiempo a vuestras voces y damos comienzo enseguida a esta sesión.\n\nBuena escucha y buen trabajo a todos."
+        },
+        "en": {
+          "title": "Good Morning – Opening of Saturday Morning Sessions – Marcelo",
+          "body": "Good morning, everyone, and welcome back to the meeting room. I hope you have rested well and renewed your energy, because this morning calls for our full attention: we will devote ourselves to what gives our gathering its true substance: SHARING.\n\nYesterday we worked on the bigger picture; today, the stage belongs entirely to you.\n\nThis morning we are giving a voice to the individual communities, to all the national communities represented here. Each community will have the opportunity to tell its story and share its experience on the ground, speaking openly not only about its strengths and achievements, but also about its weaknesses, difficulties, and the challenges it faces every day.\n\nBy sharing experiences across our different communities, we discover better solutions and the true sense of belonging that unites us as the Retrouvaille family.\n\nI will not take any more time away from your voices, so let us begin this session right away.\n\nI wish everyone a meaningful time of listening and working together."
+        },
+        "pt": {
+          "title": "Bom dia – Início dos trabalhos de sábado de manhã – Marcelo",
+          "body": "Bom dia a todos e bem-vindos de volta à sala. Espero que tenham descansado bem e recuperado as energias, porque esta manhã exige toda a nossa atenção: vamos dedicar-nos àquilo que dá verdadeira substância ao nosso encontro: A PARTILHA.\n\nSe ontem trabalhámos numa visão de conjunto, hoje o palco é inteiramente vosso.\n\nEsta manhã damos voz às diferentes comunidades, a todas as realidades nacionais aqui presentes. Cada comunidade terá a oportunidade de falar de si e trazer a sua experiência no terreno, partilhando com transparência não só os seus pontos fortes e os resultados alcançados, mas também os seus pontos fracos, as dificuldades e os desafios que enfrenta todos os dias.\n\nÉ do confronto entre as diferentes realidades que nascem melhores soluções e o verdadeiro sentimento de pertença que nos une como família Retrouvaille.\n\nNão quero ocupar mais tempo que pertence às vossas vozes, por isso vamos dar já início a esta sessão.\n\nBoa escuta e bom trabalho a todos."
+        }
+      }
+    }
+  ]
+}
