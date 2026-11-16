@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Annalisa",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Inghilterra e Galles – Annalisa",
+          "body": "Varchiamo nuovamente i confini per volare nel Nord Europa e salutare Sharon e James, coordinatori per l'Inghilterra e il Galles.\n\nUn caloroso benvenuto e grazie per condividere il vostro vissuto."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté Angleterre et pays de Galles – Annalisa",
+          "body": "Franchissons à nouveau les frontières pour nous envoler vers l'Europe du Nord et saluer Sharon et James, coordinateurs pour l'Angleterre et le pays de Galles.\n\nNous vous souhaitons chaleureusement la bienvenue et vous remercions de partager votre vécu."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad de Inglaterra y Gales – Annalisa",
+          "body": "Volvemos a cruzar las fronteras para volar hacia el norte de Europa y saludar a Sharon y James, coordinadores de Inglaterra y Gales.\n\nOs damos una calurosa bienvenida y os agradecemos que compartáis vuestras vivencias."
+        },
+        "en": {
+          "title": "Introduction of the England and Wales Community – Annalisa",
+          "body": "Once again, we cross borders and fly to Northern Europe to greet Sharon and James, coordinators for England and Wales.\n\nA very warm welcome, and thank you for sharing your experiences with us."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade de Inglaterra e País de Gales – Annalisa",
+          "body": "Voltamos a atravessar fronteiras para voar até ao Norte da Europa e saudar Sharon e James, coordenadores de Inglaterra e do País de Gales.\n\nSejam muito bem-vindos e obrigado por partilharem connosco as vossas experiências."
+        }
+      }
+    }
+  ]
+}
