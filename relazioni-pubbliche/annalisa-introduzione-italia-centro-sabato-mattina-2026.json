@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Annalisa",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Italia Centro – Annalisa",
+          "body": "Scendiamo nel cuore dell'Italia, il Centro, rappresentato oggi con affetto dai vicecoordinatori Arianna e Graziano, che portano qui la voce di Roby e Silvia.\n\nA voi la parola."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté Italie Centre – Annalisa",
+          "body": "Nous descendons au cœur de l'Italie, dans le Centre, représenté aujourd'hui avec affection par les vice-coordinateurs Arianna et Graziano, qui portent ici la voix de Roby et Silvia.\n\nÀ vous la parole."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad Italia Centro – Annalisa",
+          "body": "Descendemos al corazón de Italia, el Centro, representado hoy con cariño por los vicecoordinadores Arianna y Graziano, que traen aquí la voz de Roby y Silvia.\n\nTenéis la palabra."
+        },
+        "en": {
+          "title": "Introduction of the Central Italy Community – Annalisa",
+          "body": "We now travel down to the heart of Italy, the Central region, represented here today with affection by the deputy coordinators Arianna and Graziano, who bring us the voices of Roby and Silvia.\n\nThe floor is yours."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade Itália Centro – Annalisa",
+          "body": "Descemos até ao coração de Itália, a região Centro, representada hoje com carinho pelos vice-coordenadores Arianna e Graziano, que aqui trazem a voz de Roby e Silvia.\n\nA palavra é vossa."
+        }
+      }
+    }
+  ]
+}
