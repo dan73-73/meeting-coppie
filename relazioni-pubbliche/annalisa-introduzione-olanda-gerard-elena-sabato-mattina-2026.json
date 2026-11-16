@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Annalisa",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione Comunità Olanda – Annalisa",
+          "body": "Restiamo nel Nord Europa per accogliere Gerard ed Elena, Coordinatori dell'Olanda.\n\nGrazie per aver fatto questo tratto di strada e per essere qui a donare la vostra testimonianza.\n\nSiamo pronti ad ascoltarvi."
+        },
+        "fr": {
+          "title": "Présentation de la Communauté des Pays-Bas – Annalisa",
+          "body": "Restons en Europe du Nord pour accueillir Gerard et Elena, coordinateurs des Pays-Bas.\n\nMerci d'avoir parcouru ce bout de chemin et d'être ici pour nous offrir votre témoignage.\n\nNous sommes prêts à vous écouter."
+        },
+        "es": {
+          "title": "Presentación de la Comunidad de los Países Bajos – Annalisa",
+          "body": "Seguimos en el norte de Europa para dar la bienvenida a Gerard y Elena, coordinadores de los Países Bajos.\n\nGracias por haber recorrido este tramo del camino y por estar aquí para compartir vuestro testimonio.\n\nEstamos preparados para escucharos."
+        },
+        "en": {
+          "title": "Introduction of the Netherlands Community – Annalisa",
+          "body": "We remain in Northern Europe to welcome Gerard and Elena, coordinators of the Netherlands.\n\nThank you for making this part of the journey and for being here to share your testimony.\n\nWe are ready to listen to you."
+        },
+        "pt": {
+          "title": "Apresentação da Comunidade dos Países Baixos – Annalisa",
+          "body": "Continuamos no Norte da Europa para acolher Gerard e Elena, coordenadores dos Países Baixos.\n\nObrigado por terem percorrido esta parte do caminho e por estarem aqui para partilhar o vosso testemunho.\n\nEstamos prontos para vos ouvir."
+        }
+      }
+    }
+  ]
+}
