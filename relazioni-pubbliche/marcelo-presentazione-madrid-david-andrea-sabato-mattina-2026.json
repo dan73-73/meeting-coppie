@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Marcelo",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Presentazione dei coordinatori di Madrid – David e Andrea – Marcelo",
+          "body": "Continuiamo il nostro viaggio e accogliamo e ringraziamo i coordinatori di Madrid, David e Andrea. Grazie per portare il vostro calore, la vostra passione dalla terra spagnola. A voi la parola."
+        },
+        "fr": {
+          "title": "Présentation des coordinateurs de Madrid – David et Andrea – Marcelo",
+          "body": "Poursuivons notre voyage et accueillons et remercions les coordinateurs de Madrid, David et Andrea. Merci d'apporter votre chaleur et votre passion depuis la terre espagnole. À vous la parole."
+        },
+        "es": {
+          "title": "Presentación de los coordinadores de Madrid – David y Andrea – Marcelo",
+          "body": "Continuamos nuestro viaje y damos la bienvenida y las gracias a los coordinadores de Madrid, David y Andrea. Gracias por traer vuestro calor y vuestra pasión desde tierras españolas. Tenéis la palabra."
+        },
+        "en": {
+          "title": "Introduction of the Madrid Coordinators – David and Andrea – Marcelo",
+          "body": "Let us continue our journey as we welcome and thank the coordinators from Madrid, David and Andrea. Thank you for bringing your warmth and passion from Spain. The floor is yours."
+        },
+        "pt": {
+          "title": "Apresentação dos coordenadores de Madrid – David e Andrea – Marcelo",
+          "body": "Continuamos a nossa viagem e acolhemos e agradecemos aos coordenadores de Madrid, David e Andrea. Obrigado por trazerem o vosso calor e a vossa paixão da terra espanhola. A palavra é vossa."
+        }
+      }
+    }
+  ]
+}
