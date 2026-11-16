@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "sab-mat",
+      "coupleName": "Annalisa",
+      "day": "Sabato 28 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Introduzione di Liliana Verde – Comunità del Portogallo – Annalisa",
+          "body": "Buongiorno a tutti. Iniziamo la nostra mattinata dando spazio alla prima comunità. Vogliamo partire dalla comunità più giovane, quella nata quest'anno, la comunità del Portogallo.\n\nPer raccontarci questo inizio e portarci la testimonianza chiamiamo al tavolo Liliana Verde, che desideriamo ringraziare profondamente per la sua passione e per la sua generosa e instancabile azione.\n\nLiliana, a te la parola."
+        },
+        "fr": {
+          "title": "Présentation de Liliana Verde – Communauté du Portugal – Annalisa",
+          "body": "Bonjour à toutes et à tous. Nous commençons notre matinée en donnant la parole à la première communauté. Nous souhaitons commencer par la communauté la plus jeune, celle qui est née cette année, la communauté du Portugal.\n\nPour nous raconter ces débuts et nous apporter son témoignage, nous invitons à la table Liliana Verde, que nous tenons à remercier profondément pour sa passion et pour son action généreuse et infatigable.\n\nLiliana, tu as la parole."
+        },
+        "es": {
+          "title": "Presentación de Liliana Verde – Comunidad de Portugal – Annalisa",
+          "body": "Buenos días a todos. Comenzamos nuestra mañana dando paso a la primera comunidad. Queremos empezar por la comunidad más joven, la que ha nacido este año, la comunidad de Portugal.\n\nPara contarnos estos comienzos y compartir su testimonio, invitamos a la mesa a Liliana Verde, a quien deseamos agradecer profundamente su pasión y su labor generosa e incansable.\n\nLiliana, tienes la palabra."
+        },
+        "en": {
+          "title": "Introduction of Liliana Verde – Portugal Community – Annalisa",
+          "body": "Good morning, everyone. We begin our morning by giving the floor to the first community. We would like to start with the youngest community, the one founded this year, the community in Portugal.\n\nTo tell us about these beginnings and share her testimony, we invite Liliana Verde to the table. We wish to thank her deeply for her passion and for her generous, tireless efforts.\n\nLiliana, the floor is yours."
+        },
+        "pt": {
+          "title": "Apresentação de Liliana Verde – Comunidade de Portugal – Annalisa",
+          "body": "Bom dia a todos. Começamos a nossa manhã dando espaço à primeira comunidade. Queremos começar pela comunidade mais jovem, aquela que nasceu este ano, a comunidade de Portugal.\n\nPara nos contar este início e partilhar connosco o seu testemunho, convidamos para a mesa Liliana Verde, a quem queremos agradecer profundamente a sua paixão e a sua ação generosa e incansável.\n\nLiliana, tens a palavra."
+        }
+      }
+    }
+  ]
+}
