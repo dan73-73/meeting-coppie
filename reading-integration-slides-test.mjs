@@ -1,6 +1,7 @@
+import {createRecoveryMatcher} from './reading-recovery.mjs';
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs?v=italia-centro-five-languages-20261107';
-import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks,locatePassage,scorePassage,words as tokenize} from './reading-follow.mjs?v=punctuation-20261106a';
+import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks} from './reading-follow.mjs?v=punctuation-20261106a';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
 import {doc,runTransaction,updateDoc} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
@@ -11,7 +12,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',tail='',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null,localIndex=null,localRevision=null;
+  let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null,localIndex=null,localRevision=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
   function stop(){requestedPause=false;pending=null;localIndex=null;localRevision=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
@@ -29,31 +30,21 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     try{const p=suggestBlocks(share.translations||{});if(ok(p.blocks))return p.blocks;}catch(e){}
     return null;
   }
+  let matcher=null,matcherBlocks=null,matcherLanguage=null;
   const mic=createMicrophone({
     Recognition:window.SpeechRecognition||window.webkitSpeechRecognition,
     onStatus:message,
     onTranscript:event=>{
       const live=getState().readingFollow,share=active();
       if(!valid(live,share))return;
+      if(matcherBlocks!==live.blocks||matcherLanguage!==source){
+        matcher=createRecoveryMatcher(live.blocks,source);
+        matcherBlocks=live.blocks;matcherLanguage=source;
+      }
       for(let i=event.resultIndex;i<event.results.length;i++){
-        const words=event.results[i][0].transcript,combined=(tail+' '+words).trim();
-        const cursor=Math.max(0,live.index||0,localRevision===(live.revision||0)?localIndex||0:0);
-        let index=locatePassage(words,live.blocks,source,cursor);
-        if(index===null)index=locatePassage(combined,live.blocks,source,cursor);
-        if(index===null&&tokenize(combined).length>=6){
-          // Recupera la posizione se Firebase risponde in ritardo: richiede
-          // corrispondenza molto alta ed evita frasi ambigue.
-          const matches=[];
-          for(let p=cursor+5;p<Math.min(live.blocks.length,cursor+25);p++){
-            const value=scorePassage(combined,live.blocks[p]?.[source]||'');
-            if(value>=0.88)matches.push({p,value});
-          }
-          matches.sort((a,b)=>b.value-a.value);
-          if(matches.length&&(!matches[1]||matches[0].value-matches[1].value>=0.15))
-            index=matches[0].p;
-        }
+        const cursor=localRevision===(live.revision||0)&&localIndex!==null?localIndex:(live.index??0);
+        const index=matcher(event.results[i][0].transcript,Math.max(0,cursor));
         if(index!==null)queue(index);
-        if(event.results[i].isFinal)tail=combined.split(/\\s+/).slice(-12).join(' ');
       }
     }
   });
@@ -77,10 +68,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||getView()!=='admin'){stop();return;}
     const state=getState(),follow=state.readingFollow,cmd=state.readingRemote;
     const changed=session!==follow?.session;
-    if(changed){session=follow?.session||null;tail='';pending=null;localIndex=null;localRevision=null;}
+    if(changed){session=follow?.session||null;pending=null;localIndex=null;localRevision=null;}
     const language=spokenLanguage(share);
     if(language&&language!==source){
-      source=language;tail='';pending=null;localIndex=null;localRevision=null;
+      source=language;pending=null;localIndex=null;localRevision=null;
       mic.setLanguage(locales[source]);
       message('Lingua del relatore aggiornata: '+names[source]+'.');
     }
@@ -95,7 +86,10 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       }
     }
     const shouldPause=requestedPause;
-    if(mic.paused!==shouldPause)mic.pause(shouldPause);
+    if(mic.paused!==shouldPause){
+      pending=null;localIndex=null;localRevision=null;
+      mic.pause(shouldPause);
+    }
   }
   async function remoteCommand(command){
     const state=getState(),share=active();
@@ -155,7 +149,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const action=fn=>async()=>{try{await fn();}catch(err){message(err.code==='permission-denied'?'Salvataggio non autorizzato da Firebase. Accedi con il tuo account amministratore.':err.message||String(err));}};
   async function position(index,manual=false){
     const s=getState(),share=active(),record=s.readingFollow;if(!isAdmin()||!valid(record,share))throw Error('Attiva e prepara prima una condivisione.');
-    pending=null;tail='';localIndex=null;localRevision=null;const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
+    pending=null;localIndex=null;localRevision=null;const bounded=Math.max(-1,Math.min(index,record.blocks.length-1));
     await runTransaction(db,async tx=>{const snap=await tx.get(ref),now=snap.data(),r=now?.readingFollow;if(now?.activeShareId!==share.id||r?.session!==record.session)throw Error('La condivisione attiva è cambiata.');tx.update(ref,{readingFollow:{...r,index:bounded,revision:(r.revision||0)+(manual?1:0)}});});
   }
   // Non leggere il documento con tutte le immagini per ogni nuova frase.
@@ -163,8 +157,8 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   function queue(index){
     const r=getState().readingFollow;if(!r)return;
     const rev=r.revision||0;
-    const current=localRevision===rev&&localIndex!==null?Math.max(localIndex,r.index||0):r.index||0;
-    if(index<=current)return;
+    const current=localRevision===rev&&localIndex!==null?localIndex:(r.index??0);
+    if(index===current||index<0||index>=r.blocks.length)return;
     localIndex=index;localRevision=rev;
     pending={index,session:r.session,revision:rev,shareId:r.shareId};
     if(!timer&&!sending)timer=setTimeout(flush,80);
@@ -195,7 +189,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(needsShortening(share))throw Error('La suddivisione automatica non è completata. Controlla il messaggio sotto i pulsanti.');
     const lang=spokenLanguage(share);if(lang)source=lang;
     stop();localIndex=record.index??0;localRevision=record.revision||0;session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
-    tail='';requestedPause=false;mic.start(locales[source]);
+    requestedPause=false;mic.start(locales[source]);
   }
   async function shortenHighlightedPassages(){
     if(!isAdmin())throw Error('Accesso amministratore necessario.');
