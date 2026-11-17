@@ -20,7 +20,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=riaggancio-20261117';
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=telecomando-stop-20261117';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
@@ -1786,6 +1786,11 @@ subscribeState(state => {
   loadPublicInBackground(persistedState);
   reading.sync();
   const before=previous?.readingFollow,after=appState.readingFollow;
+  // Keep remote buttons mounted while speech updates only the current passage.
+  if(currentView==='admin'&&adminTab==='remote'&&before&&after&&before.index!==after.index){
+    const withoutIndex=s=>({...s,readingFollow:{...s.readingFollow,index:0}});
+    if(JSON.stringify(withoutIndex(previous))===JSON.stringify(withoutIndex(appState))&&reading.updateRemoteProgress())return;
+  }
   const sameContext=currentView==='couple' && coupleLang && before && after &&
     before.shareId===after.shareId && before.session===after.session &&
     before.revision===after.revision && before.index!==after.index &&
