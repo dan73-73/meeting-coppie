@@ -40,9 +40,9 @@ export function createRelay({origin,maxClients=150,initialState=null,initialVers
   if(req.url==='/state'&&['PATCH','PUT'].includes(req.method)){
    try{
     if(!await authorize(req.headers.authorization||'')){respond(401,{error:'Accesso amministratore necessario'});return;}
-    let body='',bytes=0;
-    for await(const chunk of req){bytes+=chunk.length;if(bytes>2*1024*1024){respond(413,{error:'Dati troppo grandi'});return;}body+=chunk.toString();}
-    const payload=JSON.parse(body);
+    const chunks=[];let bytes=0;
+    for await(const chunk of req){bytes+=chunk.length;if(bytes>2*1024*1024){respond(413,{error:'Dati troppo grandi'});return;}chunks.push(chunk);}
+    const payload=JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if(!payload||typeof payload!=='object'||Array.isArray(payload)){respond(400,{error:'Dati non validi'});return;}
     const perform=async()=>{
      if(String(version)!==req.headers['if-match']){respond(409,{error:'Stato aggiornato, riprova'});return;}

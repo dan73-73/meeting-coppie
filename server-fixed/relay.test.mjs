@@ -1,6 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRelay} from './relay.mjs';
+import http from 'node:http';
+
+test('UTF-8 texts stay exact when a character crosses incoming request chunks',async()=>{
+ const {server}=createRelay({origin:'https://dan73-73.github.io',initialState:{shares:[]},authorize:async()=>true});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const url='http://127.0.0.1:'+server.address().port+'/state';
+ const state={shares:[{body:'expérimentées · città · português · 🌍'}]};
+ const data=Buffer.from(JSON.stringify(state));const boundary=data.indexOf(Buffer.from('é'))+1;
+ try{
+  const status=await new Promise((resolve,reject)=>{
+   const req=http.request(url,{method:'PUT',headers:{'Content-Type':'application/json','If-Match':'0'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});
+   req.on('error',reject);req.write(data.subarray(0,boundary));
+   setTimeout(()=>req.end(data.subarray(boundary)),30);
+  });
+  assert.equal(status,200);
+  assert.deepEqual((await (await fetch(url)).json()).state,state);
+ }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
+});
 
 test('75 phones receive complete state once, small forward/backward updates, and reconnect',async()=>{
  const {server,push}=createRelay({origin:'https://dan73-73.github.io'});
