@@ -1,0 +1,1 @@
+{"name":"meeting-fixed-relay","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test relay.test.mjs"},"dependencies":{"firebase":"10.12.0"}}
