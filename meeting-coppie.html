@@ -652,7 +652,7 @@ function renderAdmin() {
             if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
             return {number:p.slide,afterBlock:p.afterBlock,images};
           });
-          importZip = {zip,batches,name:file.name.replace(/\.zip$/i,'_slides.zip')};
+          importZip = {zip,batches,name:file.name.replace(/\.zip$/i,'_slides.zip'),replaceShareId:positions.replaceShareId};
         } else {
           parsed = JSON.parse(await file.text());
         }
@@ -711,6 +711,13 @@ function renderAdmin() {
           if (importZip) {
             if (newShares.length !== 1) throw Error("Il pacchetto prova deve contenere una sola relazione.");
             const target = newShares[0];
+            if (importZip.replaceShareId) {
+              confirmBtn.textContent='Verifica delle 18 slide e dei testi…';
+              await replaceFridayRowShare(target,importZip);
+              importItems=[];importError="";importZip=null;adminTab="list";render();
+              alert('Scheda del venerdì aggiornata: 18 slide e testi in cinque lingue.');
+              return;
+            }
             existing=(appState.shares||[]).find(s =>
               s.translations?.it?.title===target.translations.it.title &&
               ['it','fr','es','en','pt'].every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
@@ -1243,6 +1250,49 @@ const PUBLIC_MEETING_PRESETS={
     afterBlocks:[-1,0,1,2,3,4,5,6,7]
   }
 };
+async function replaceFridayRowShare(target, bundle) {
+  const shareId='s1793894800504-0';
+  const archive='ED_ROW_Mark_Maria_Luisa_Venerdi_Definitivo_slides.zip';
+  const title='E&D ROW – Mark e Maria Luisa Da Rodda';
+  const languages=['it','en','fr','es','pt'];
+  if (!adminAuth || bundle.replaceShareId!==shareId || bundle.name!==archive ||
+      target.sectionId!=='ven-sera' || target.translations.it.title!==title ||
+      bundle.batches.length!==18 ||
+      !bundle.batches.every((slide,i)=>slide.number===i+1 && slide.afterBlock===i-1) ||
+      !languages.every(lang=>target.translations[lang].body.split('\n\n').length===18)) {
+    throw Error('Il pacchetto non corrisponde alla scheda E&D ROW del venerdì.');
+  }
+  const positions=bundle.batches.map(({number,afterBlock})=>({number,afterBlock}));
+  const prepared=preparePublicSlideReading(target.translations,positions);
+  await checkSlideArchive(archive,positions.map(p=>p.number));
+  await runTransaction(firestore, async tx=>{
+    const ref=doc(firestore,'state','main');
+    const snap=await tx.get(ref);
+    if (!snap.exists()) throw Error('Programma non disponibile.');
+    const state=snap.data();
+    const shares=state.shares||[];
+    const current=shares.find(share=>share.id===shareId);
+    const currentTitle=current?.translations?.it?.title;
+    if (shares.filter(share=>share.id===shareId).length!==1 ||
+        current?.sectionId!=='ven-sera' ||
+        (currentTitle!=='E&D ROW — Mark e Maria Luisa Da Rodda (PROVA 5 slide)' &&
+         (currentTitle!==title || current.slideArchive!==archive))) {
+      throw Error('La scheda da aggiornare è cambiata. Controlla il Programma.');
+    }
+    const updated={...current,coupleName:target.coupleName,translations:target.translations,
+      slideArchive:archive,inlineSlides:prepared.inlineSlides,readingBlocks:prepared.readingBlocks,
+      readingSegmentationVersion:2};
+    const patch={shares:shares.map(share=>share.id===shareId?updated:share)};
+    if (state.readingFollow?.shareId===shareId) {
+      patch.readingFollow={...state.readingFollow,session:crypto.randomUUID(),
+        blocks:prepared.readingBlocks,index:0,revision:(state.readingFollow.revision||0)+1};
+    }
+    const total=new TextEncoder().encode(JSON.stringify({...state,...patch})).length;
+    if (total>850000) throw Error('Spazio insufficiente nel programma.');
+    tx.update(ref,patch);
+  });
+}
+
 async function addPublicMeetingShare(key){
   if(!adminAuth)throw Error('Accesso amministratore richiesto.');
   const spec=PUBLIC_MEETING_PRESETS[key];
