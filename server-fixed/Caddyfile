@@ -1,0 +1,13 @@
+{$RELAY_DOMAIN} {
+ @private path /prova/.git /prova/.git/* /prova/server-fixed /prova/server-fixed/* /prova/.env
+ respond @private 404
+ handle_path /prova/* {
+  root * /site
+  file_server
+ }
+ handle {
+  reverse_proxy relay:8080 {
+   flush_interval -1
+  }
+  }
+}
