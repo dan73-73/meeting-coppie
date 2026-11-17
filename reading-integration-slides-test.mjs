@@ -12,7 +12,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   const locales={it:'it-IT',en:'en-US',fr:'fr-FR',es:'es-ES',pt:'pt-PT'};
   function spokenLanguage(share){const code=share?.speakerLanguage||share?.sourceLanguage||share?.originalLanguage||share?.spokenLanguage;return locales[code]?code:null;}
   const buttonStyle={padding:'8px 14px',borderRadius:'16px',border:'1px solid rgba(200,169,110,.4)',background:'transparent',color:'#c8a96e',cursor:'pointer',fontSize:'14px'};
-  let requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null,localIndex=null,localRevision=null;
+  let microphoneHost=false,requestedPause=false,lastRemoteCommand=null,source='it',status='Microfono fermo.',pending=null,sending=false,timer=null,restart=null,session=null,dialog=null,localIndex=null,localRevision=null;
   function message(text){status=text;const p=document.getElementById('reading-status');if(p)p.textContent=text;}
   function stop(){requestedPause=false;pending=null;localIndex=null;localRevision=null;clearTimeout(timer);clearTimeout(restart);timer=null;mic.stop();}
   function active(){const s=getState();return (s.displayMode||'one')==='one'?(s.shares||[]).find(x=>x.id===s.activeShareId):null;}
@@ -64,9 +64,16 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         .catch(err=>message('Errore nella preparazione automatica: '+(err?.message||err)))
         .finally(()=>{automaticSplitRunning=false;});
     }
-    if(!mic.active)return;
-    if(!isAdmin()||getView()!=='admin'){stop();return;}
+    if(!isAdmin()||getView()!=='admin'){if(mic.active)stop();return;}
     const state=getState(),follow=state.readingFollow,cmd=state.readingRemote;
+    // Only the computer on which reading was started answers microphone commands.
+    if(!mic.active){
+      if(microphoneHost&&cmd?.id&&cmd.id!==lastRemoteCommand&&['pause','resume','stop'].includes(cmd.command)){
+        lastRemoteCommand=cmd.id;
+        acknowledge(cmd.id,cmd.command==='stop'?'microfono fermo':'microfono fermo · premi Avvia lettura sul computer');
+      }
+      return;
+    }
     const changed=session!==follow?.session;
     if(changed){session=follow?.session||null;pending=null;localIndex=null;localRevision=null;}
     const language=spokenLanguage(share);
@@ -77,12 +84,19 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     }
     if(cmd?.id&&cmd.id!==lastRemoteCommand){
       lastRemoteCommand=cmd.id;
+      if(['pause','resume','stop'].includes(cmd.command)&&cmd.session!==follow?.session){
+        acknowledge(cmd.id,'comando scaduto · invialo di nuovo');return;
+      }
+      if(cmd.command==='stop'){stop();acknowledge(cmd.id,'microfono fermo');return;}
       if(cmd.command==='pause'){requestedPause=true;}
       if(cmd.command==='resume'){requestedPause=false;}
+      if(cmd.command==='pause'||cmd.command==='resume'){
+        pending=null;localIndex=null;localRevision=null;
+        mic.pause(requestedPause);
+        acknowledge(cmd.id,mic.paused?'pausa':'automatico');
+      }
       if(cmd.command==='next'||cmd.command==='previous'){
         acknowledge(cmd.id,'condivisione cambiata');
-      }else if(cmd.command==='pause'||cmd.command==='resume'){
-        acknowledge(cmd.id,cmd.command==='pause'?'pausa':'automatico');
       }
     }
     const shouldPause=requestedPause;
@@ -133,7 +147,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
         if((now.shares||[]).some(s=>s.publicTextFile))
           patch.shares=now.shares.map(s=>s.id===next.id?prepared:compactPublicShare(s));
         tx.update(ref,patch);
-      }else if(command==='pause'||command==='resume'||command==='manual'){
+      }else if(command==='pause'||command==='resume'||command==='manual'||command==='stop'){
         if(command==='resume'&&!valid(current,share))throw Error('Prepara prima i passaggi di questa condivisione per il microfono.');
         tx.update(ref,{readingRemote:{session:sessionId,command:command==='manual'?'pause':command,manual:command==='manual',id:crypto.randomUUID()}});
       }else if(command==='manual-forward'||command==='manual-back'){
@@ -188,7 +202,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     if(!isAdmin()||!valid(record,share))throw Error('Prepara i passaggi della condivisione attiva.');
     if(needsShortening(share))throw Error('La suddivisione automatica non è completata. Controlla il messaggio sotto i pulsanti.');
     const lang=spokenLanguage(share);if(lang)source=lang;
-    stop();localIndex=record.index??0;localRevision=record.revision||0;session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
+    stop();microphoneHost=true;localIndex=record.index??0;localRevision=record.revision||0;session=record.session;lastRemoteCommand=getState().readingRemote?.id||null;
     requestedPause=false;mic.start(locales[source]);
   }
   async function shortenHighlightedPassages(){
@@ -302,7 +316,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     const state=getState(),share=active(),record=state.readingFollow,shares=orderedShares(state);
     const displayLang=spokenLanguage(share)||'it';
     const cmd=state.readingRemote,ack=state.readingRemoteAck;
-    const confirmation=cmd?.id && ack?.id===cmd.id ? ('✅ ESEGUITO DAL COMPUTER · '+(ack?.mode||'')) : (cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
+    const confirmation=cmd?.id && ack?.id===cmd.id ? ((ack?.mode?.includes('premi Avvia')||ack?.mode?.includes('scaduto')?'⚠ RISPOSTA DEL COMPUTER · ':'✅ ESEGUITO DAL COMPUTER · ')+(ack?.mode||'')) : (cmd?.id?'⌛ COMANDO REGISTRATO · in attesa della conferma del computer':'Nessun comando inviato');
     const idx=shares.findIndex(x=>x.id===share?.id),previous=shares[idx-1],next=shares[idx+1];
     const summary=x=>x?((x.time||'Orario non indicato')+' · '+(x.coupleName||'Relatore da indicare')+'\n'+(x.translations?.it?.title||'Senza titolo')):'Nessuna';
     const row=(label,value)=>e('div',{style:{border:'1px solid #625536',borderRadius:'12px',padding:'14px',whiteSpace:'pre-line'}},
@@ -348,19 +362,33 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       remoteFullTextOpen&&share?e('div',{style:{background:'#141423',border:'1px solid #8f7747',borderRadius:'12px',padding:'16px',maxHeight:'62vh',overflowY:'auto',overscrollBehavior:'contain'}},
         e('h3',{style:{color:'#e8c87a',fontSize:'17px',marginBottom:'12px'}},share.translations?.[displayLang]?.title||share.translations?.it?.title||'Condivisione in corso'),
         e('div',{style:{fontSize:'15px',lineHeight:'1.85',color:'#f0e4cc',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},
-          ...(valid(record,share)?record.blocks.map((block,i)=>e('span',{style:i===record.index&&record.blocks.length>1?{background:'rgba(232,200,117,.34)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},block[displayLang]||'')):[e('span',{},share.translations?.[displayLang]?.body||'Testo non disponibile')]))
+          ...(valid(record,share)?record.blocks.map((block,i)=>e('span',{'data-remote-reading-block':String(i),style:i===record.index&&record.blocks.length>1?{background:'rgba(232,200,117,.34)',borderRadius:'3px',boxDecorationBreak:'clone'}:{}},block[displayLang]||'')):[e('span',{},share.translations?.[displayLang]?.body||'Testo non disponibile')]))
       ):null,
-      record?row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.[displayLang]||'')):null,
-      btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),
+      record?e('div',{id:'remote-reading-progress'},row('📍 PUNTO LETTURA',((record.index??0)+1)+' di '+record.blocks.length+'\n'+(record.blocks[record.index??0]?.[displayLang]||''))):null,
+      btn('⏸ PAUSA','pause'),btn('▶ RIPRENDI','resume'),btn('⏹ FERMA LETTURA','stop'),
+      e('p',{style:{fontSize:'13px',color:'#c8a96e'}},'Pausa sospende il seguito del testo; Riprendi lo riattiva. Ferma spegne il microfono: per riavviarlo premi Avvia lettura sul computer.'),
       btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),
       btn('CONDIVISIONE SUCCESSIVA ➡','next',!next),
       e('div',{style:{border:'1px solid #b77',borderRadius:'14px',padding:'14px',display:'grid',gap:'10px'}},
         e('strong',{},'🆘 EMERGENZA · GUIDA MANUALE'),
         btn('ATTIVA GUIDA MANUALE','manual'),
-        row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.[displayLang]||''):'Nessun testo preparato'),
+        e('div',{id:'remote-manual-progress'},row('PASSAGGIO ATTUALE',record?((record.index??0)+1)+' / '+record.blocks.length+' · '+(record.blocks[record.index??0]?.[displayLang]||''):'Nessun testo preparato')),
         btn('⬅ CONDIVISIONE PRECEDENTE','previous',!previous),btn('CONDIVISIONE SUCCESSIVA ➡','next',!next),
         e('p',{style:{fontSize:'12px',color:'#a09080'}},'EMERGENZA: questi comandi cambiano l’intera condivisione, inclusi relatore, orario, titolo e testo nelle cinque lingue. Per tornare al microfono premi RIPRENDI.')),
       e('p',{id:'reading-status',role:'status',style:{color:'#c8a96e',fontSize:'13px'}},status));
+  }
+  function updateRemoteProgress(){
+    const r=getState().readingFollow,lang=spokenLanguage(active())||'it';
+    const progress=document.getElementById('remote-reading-progress');
+    if(!r||!progress)return false;
+    const text=r.blocks[r.index??0]?.[lang]||'';
+    progress.querySelector('strong').textContent=((r.index??0)+1)+' di '+r.blocks.length+'\n'+text;
+    const manual=document.getElementById('remote-manual-progress');
+    if(manual)manual.querySelector('strong').textContent=((r.index??0)+1)+' / '+r.blocks.length+' · '+text;
+    document.querySelectorAll('[data-remote-reading-block]').forEach(node=>{
+      node.style.background=Number(node.getAttribute('data-remote-reading-block'))===r.index?'rgba(232,200,117,.34)':'';
+    });
+    return true;
   }
   let lastScroll='';
   function body(share,lang,content){
@@ -403,5 +431,5 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
     return true;
   }
   window.addEventListener('pagehide',stop);
-  return {panel,remotePanel,body,sync,stop,updateHighlight};
+  return {panel,remotePanel,body,sync,stop,updateHighlight,updateRemoteProgress};
 }
