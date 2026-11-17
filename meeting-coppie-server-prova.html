@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PROVA SERVER · Meeting Coppie · Retrouvaille 2026</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d0d1a; font-family: Georgia, serif; color: #e8dcc8; min-height: 100vh; }
+button { font-family: Georgia, serif; }
+textarea, input, select { font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
+
+import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=telecomando-stop-20261117';
+import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
+import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
+import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
+import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=punctuation-20261106a';
+
+import {FIXED_RELAY_URL,subscribeFixedState} from './fixed-sync.mjs';
+const firebaseConfig = {
+  apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
+  authDomain: "meeting---coppie.firebaseapp.com",
+  projectId: "meeting---coppie",
+  storageBucket: "meeting---coppie.firebasestorage.app",
+  messagingSenderId: "1027854978190",
+  appId: "1:1027854978190:web:a368caebc29bb1013e0ddf"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const firestore = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp);
+
+const DEFAULT_SECTIONS = [
+  { id: "ven-sera", label: "Venerdì sera", icon: "🌙", order: 1 },
+  { id: "sab-mat", label: "Sabato mattina", icon: "🌅", order: 2 },
+  { id: "sab-pom", label: "Sabato pomeriggio", icon: "☀️", order: 3 },
+  { id: "sab-sera", label: "Sabato sera", icon: "🌆", order: 4 },
+  { id: "dom-mat", label: "Domenica mattina", icon: "🙏", order: 5 },
+];
+const DEFAULT_STATE = {
+  activeShareId: null,
+  selectedShareIds: [],
+  displayMode: "one",
+  shares: [],        // shares in the weekend schedule
+  library: [],       // archive/library of all prepared shares
+  sections: DEFAULT_SECTIONS
+};
+
+const LOGO_URL = "https://i.ibb.co/C368QQ9D/image.png";
+
+// Only pre-link passages automatically when every translation has the
+// same number of complete paragraphs. Never guess alignment by length.
+function alignedReadingBlocks(translations) {
+  const proposal = suggestBlocks(translations || {});
+  return proposal.mode === "paragraph" ? proposal.blocks : null;
+}
+
+async function saveState(state) {
+  state=preparePublicSave(state);
+  const ref = doc(firestore, "state", "main");
+  await runTransaction(firestore, async tx => {
+    const snap = await tx.get(ref);
+    let reading = snap.data()?.readingFollow || null;
+    const share = (state.shares || []).find(s => s.id === state.activeShareId);
+    const validBlocks = blocks => Array.isArray(blocks) && blocks.length && ["it","en","fr","es","pt"].every(l => blocks.map(b=>b[l]||"").join("") === (share?.translations?.[l]?.body || ""));
+    if ((state.displayMode || "one") !== "one" || !share) reading = null;
+    else if (reading?.shareId !== share.id || !validBlocks(reading?.blocks)) {
+      const blocks = validBlocks(share.readingBlocks) ? share.readingBlocks : alignedReadingBlocks(share.translations);
+      reading = validBlocks(blocks) ? {shareId:share.id,session:crypto.randomUUID(),blocks,index:0,revision:0} : null;
+    }
+    tx.set(ref, {...state, readingFollow: reading});
+  });
+}
+function subscribeState(cb) {
+  if(window.location.hash==='#couple'){
+    if(!FIXED_RELAY_URL)throw Error('Server di prova non ancora configurato. Usa per ora l’app abituale.');
+    const status=document.createElement('div');
+    status.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#231d30;color:#fff;padding:8px;z-index:9999;text-align:center';
+    document.body.appendChild(status);
+    return subscribeFixedState(FIXED_RELAY_URL,cb,text=>{status.textContent=text;});
+  }
+  return onSnapshot(doc(firestore, "state", "main"), (snap) => {
+    if (snap.exists()) cb(snap.data());
+    else cb(DEFAULT_STATE);
+  });
+}
+async function initState() {
+  const snap = await getDoc(doc(firestore, "state", "main"));
+  if (!snap.exists()) await saveState(DEFAULT_STATE);
+}
+
+const LANG_NAMES = { it: "Italiano", en: "English", fr: "Français", es: "Español", pt: "Português" };
+const LANG_FLAGS = { it: "🇮🇹", en: "🇬🇧", fr: "🇫🇷", es: "🇪🇸", pt: "🇵🇹" };
+const UI_LABELS = {
+  it: { choose: "Scegli la tua lingua", waiting: "In attesa della prossima condivisione…", welcome: "Oltre la porta, il cammino", waitingSubtitle: "perché diventi un seme per il futuro non un semplice ricordo", by: "Condivisione guidata dall'amministratore", prev: "◀ Precedente", next: "Successiva ▶", of: "di" },
+  en: { choose: "Choose your language", waiting: "Waiting for the next sharing…", welcome: "Beyond the door, the journey", waitingSubtitle: "so that it may become a seed for the future, not simply a memory", by: "Sharing guided by the administrator", prev: "◀ Previous", next: "Next ▶", of: "of" },
+  fr: { choose: "Choisissez votre langue", waiting: "En attente du prochain partage…", welcome: "Au-delà de la porte, le chemin", waitingSubtitle: "pour qu’il devienne une graine pour l’avenir, et pas seulement un souvenir", by: "Partage guidé par l'administrateur", prev: "◀ Précédent", next: "Suivant ▶", of: "sur" },
+  es: { choose: "Elige tu idioma", waiting: "Esperando la próxima compartición…", welcome: "Más allá de la puerta, el camino", waitingSubtitle: "para que se convierta en una semilla para el futuro y no en un simple recuerdo", by: "Compartición guiada por el administrador", prev: "◀ Anterior", next: "Siguiente ▶", of: "de" },
+  pt: { choose: "Escolha o seu idioma", waiting: "A aguardar a próxima partilha…", welcome: "Para além da porta, o caminho", waitingSubtitle: "para que se torne uma semente para o futuro e não apenas uma recordação", by: "Partilha guiada pelo administrador", prev: "◀ Anterior", next: "Seguinte ▶", of: "de" },
+};
+const ADMIN_UID = "S80JhCm2aJUqLpCNgzbX8NTp5v03";
+
+async function translateWithAI(itTitle, itBody) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: `Translate this Italian text into English, French, Spanish, and European Portuguese. Return ONLY valid JSON, no markdown, no backticks:\n{"en":{"title":"...","body":"..."},"fr":{"title":"...","body":"..."},"es":{"title":"...","body":"..."},"pt":{"title":"...","body":"..."}}\n\nItalian title: ${itTitle}\nItalian body: ${itBody}` }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.[0]?.text || "{}";
+    return JSON.parse(raw.replace(/```[a-z]*\n?/gi,"").replace(/```/g,"").trim());
+  } catch(e) {
+    return { en:{title:itTitle,body:itBody}, fr:{title:itTitle,body:itBody}, es:{title:itTitle,body:itBody}, pt:{title:itTitle,body:itBody} };
+  }
+}
+
+let appState = { ...DEFAULT_STATE };
+let persistedState = { ...DEFAULT_STATE };
+const publicTextCache=new Map();
+const publicTextLoading=new Set();
+function applyPublicLocalCache(state){
+  return {...state,shares:(state.shares||[]).map(share=>{
+    const content=share.publicTextFile&&publicTextCache.get(share.publicTextFile);
+    return content&&!(share.translations?.it?.body)
+      ? hydratePublicShare(share,content,alignedReadingBlocks):share;
+  })};
+}
+function loadPublicInBackground(state){
+  for(const share of state.shares||[]){
+    const file=share.publicTextFile;
+    if(!file||publicTextCache.has(file)||publicTextLoading.has(file))continue;
+    publicTextLoading.add(file);
+    loadPublicText(file).then(content=>{
+      publicTextCache.set(file,content);
+      appState=applyPublicLocalCache(persistedState);
+      render();
+    }).catch(err=>{
+      console.error('Relazione GitHub non disponibile:',file,err);
+    }).finally(()=>publicTextLoading.delete(file));
+  }
+}
+let currentView = window.location.hash === "#couple" ? "couple" : "admin";
+let coupleLang = null;
+let couplePageIndex = 0;
+let adminAuth = false;
+let adminTab = "list";
+let publicMetaDraft = null;
+let adminForm = null;
+let adminEditId = null;
+let adminFormTarget = "shares"; // "shares" or "library"
+let filterSection = "all";
+let newSecLabel = "";
+let newSecIcon = "✨";
+let libForm = null;
+let libEditId = null;
+let libFilterCommunity = "all";
+let importItems = [];
+let importError = "";
+let importZip = null;
+let importBusy = false;
+let importProgress = "";
+const reading = createReadingIntegration({db:firestore,e,getState:()=>appState,isAdmin:()=>adminAuth,getView:()=>currentView,refresh:()=>render()});
+
+window.addEventListener("hashchange", () => {
+  window.location.reload();return;
+  currentView = window.location.hash === "#couple" ? "couple" : "admin";
+  couplePageIndex = 0;
+  reading.sync();
+  render();
+});
+
+function e(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k.startsWith("on")) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === "style") Object.assign(el.style, v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v);
+  }
+  for (const child of children.flat()) {
+    if (child == null) continue;
+    el.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return el;
+}
+
+// ═══ HELPERS ═══
+function getActiveShares() {
+  const mode = appState.displayMode || "one";
+  const all = appState.shares || [];
+  if (mode === "one") {
+    const s = all.find(s => s.id === appState.activeShareId);
+    return s ? [s] : [];
+  } else if (mode === "selected") {
+    const ids = appState.selectedShareIds || [];
+    return all.filter(s => ids.includes(s.id));
+  } else {
+    return all;
+  }
+}
+
+function renderShareCard(share, lang, section, ui) {
+  const content = share.translations?.[lang]?.title ? share.translations[lang] : share.translations?.it;
+  const parts = [
+    section ? e("div", { style:{display:"inline-block", padding:"4px 14px", borderRadius:"20px", background:"rgba(200,169,110,0.12)", border:"1px solid rgba(200,169,110,0.25)", color:"#c8a96e", fontSize:"13px", marginBottom:"16px"} }, section.icon + " " + section.label) : null,
+    e("h2", { style:{fontSize:"23px", fontWeight:"600", color:"#e8dcc8", marginBottom:"14px", lineHeight:"1.35"} }, content?.title || "—"),
+    reading.body(share, lang, content),
+  ];
+  if (share.imageUrl) parts.push(e("img", { src:share.imageUrl, style:{width:"100%", borderRadius:"14px", marginBottom:"16px", maxHeight:"300px", objectFit:"cover"} }));
+  parts.push(e("div", { style:{fontSize:"11px", color:"#706050", textAlign:"center", letterSpacing:"1px", marginTop:"16px"} }, ui.by));
+  return e("div", {}, ...parts.filter(Boolean));
+}
+
+// ═══ COUPLE VIEW ═══
+function renderCouple() {
+  const ui = UI_LABELS[coupleLang || "it"];
+  const activeShares = getActiveShares();
+  const sections = appState.sections || [];
+
+  if (!coupleLang) {
+    const grid = e("div", { style: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" } },
+      ...Object.entries(LANG_NAMES).map(([code, name]) =>
+        e("button", {
+          style: { display:"flex", flexDirection:"column", alignItems:"center", gap:"6px", padding:"16px 12px", borderRadius:"14px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(200,169,110,0.06)", cursor:"pointer", color:"#e8dcc8" },
+          onClick: () => { coupleLang = code; couplePageIndex = 0; render(); }
+        }, e("span", { style:{fontSize:"30px"} }, LANG_FLAGS[code]), e("span", { style:{fontSize:"14px"} }, name))
+      )
+    );
+    return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
+      e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
+        e("img", { src:LOGO_URL, style:{width:"100%", borderRadius:"12px", marginBottom:"20px", objectFit:"cover"} }),
+        e("h2", { style:{textAlign:"center", fontSize:"20px", color:"#c8a96e", fontWeight:"400", marginBottom:"28px", letterSpacing:"1px"} }, UI_LABELS.it.choose),
+        grid
+      )
+    );
+  }
+
+  const backBtn = e("button", {
+    style:{display:"inline-flex", alignItems:"center", gap:"6px", background:"transparent", border:"1px solid rgba(200,169,110,0.3)", color:"#c8a96e", borderRadius:"20px", padding:"4px 14px", cursor:"pointer", fontSize:"13px", marginBottom:"24px"},
+    onClick: () => { coupleLang = null; couplePageIndex = 0; render(); }
+  }, LANG_FLAGS[coupleLang] + " " + LANG_NAMES[coupleLang] + " ✕");
+
+  let body;
+  if (activeShares.length === 0) {
+    body = e("div", { style:{textAlign:"center", padding:"20px 0"} },
+      e("img", { src:LOGO_URL, style:{width:"100%", borderRadius:"12px", marginBottom:"24px", objectFit:"cover"} }),
+      e("img", { src:"data:image/webp;base64,UklGRsQMAABXRUJQVlA4ILgMAACQRgCdASoYAXIAPuVqqlEpJaO1pzcL6rAciUDgccz8AQwNpRRiQ2vzps5EPhOd38l3zPTfuKuet87Tfm96fn9bhisxCF3sOo8WVPsWu+Hfdc0eih3CG1MJa5VQaWfZgd8ep2ocI1xjoI4ygSnwb4tKH8/olnigxD9Ej4vPrxKkEatlW+mQcJdmozgHeLgy1fyIpZh7qsrOSzrjhNANmKpb2LE61GumCD0dfc0pNOTNb5nXIQIsBTtR3cyibdE0RpH6mbV2u05cBY8mn/nfd1s3VTzJYAlTYQPnTHapU8Z+80oVVbQvzN0YEtWbdgyTtz0aB5Hf7je5C18s+66s5FUT5Cm4SaeKI2pfEq4sgf5Qb95239BfFMC1wAJdfK4HQgKLnSW1fosN7fGtxp/1/byEriElU8GI3ac4omrGA2f+31xYBA2jGQ2JF9rsQTBsaZUL1g04VPjDlVEfbxvmX/KY2iPa+U/cs2bhDt9iFFHDai1p2TaDmzUcmIQ4JC1kO80lmt88ZZfTvozzU0+BRxUZb7BPppkmNDY298j0yTdXlBGDzl2MXPuCtPnfkMMxaXF0yX5lHBDykpEOnUO21eRzbrP/41hyKjoxlDwDVi59vsFcKgvAtAe2d5Cp6l8PkLICbM0wSbqc8aXAH4nhzZe5cD2zW1rn2i7vSeaJXov4Nrc5qLNHSGs5h5Qsdn6p5R/9Q4rQ8NGtXm2eAzv72P+DjVHzB2Cix9/doOn+hSaJjf5xr48MKA5+2XmKJAAA/vL+EQInbuvcZd2PgCITIl4jXhiKjJ2ahSZFQ7v0o0gmVzyuoaYVWbYAUaoKd1YPSIkmyyNqBxW7YQWUI9EkxyZODDvWzTQIbv6Ndn9POVizIrfRPDUw2gQPcapX5UCEcQpr+xmQ6hWQvps2uL+lvWSb8zHSeililFxuwFm/7k6lukPXVWunQC97cNtRLzEAbj9BCj1KSbcVIBozWkKtXy2n3W4FcKYA0moEm5sxZnKv49HNpaAcQ6yp/fVpfSnT3cLq7Yolopk/1hXgQjeY42Ej75lMm51udnvUUYg8fpmIpPtKPLshNN1HNfseaEy08qImJ4wujewm0D7uddfV1Oj4J3ggI5phSZp5aNt4ES4oF1p182lcZMuc16qjm2S285f8g7fFLIvLVlfr6Jn8ndWCee+PqTp+H4assGDOvXmNv2SaVHb2fd8WdW2ndoDLwwToKci6z8i4wihxDQHNHDfWzmZafeYbtVqcyVydXN/60YgBXps0kno3jdMHj/7UqJDSTXA14AmQIvEcxLF6YkFnDvfjcvEiH0ThrYrp80jndh1ZPcgU06JmZJrwD7frVaH9KCFtCo/Ia9sWDlNM2+vpA5khRfWNvWXct0W7IK4LLhuLHOkU7Me/41PmqSLGgRp6XfBsC/nrY3TKvymr8MvLWjS/DqG99+gXvozbtlJx8Wjuew8h3ESw/URxCeWuYuMJ3SVF0YP/aFfR0djMYAnnw3KI9Is56PxgYXUKanhFsq6AlK6ZyzaB7jZHFZZOvsEmA2zA5EQuFWSKP7aMGMcyYgpNjDiyjE40y/ZXVmoYlslYDy7rjBl2ir9xMiayEJJ5fogzojRuq+V51WHURPNB1dYQz+C05mhfLZZmiT9uZq8T9aS/cFS9fmteDlJgnRpmop1aj2ZdPBM84bgOge89VE5EVdagkJpBE9FdVUj4OuOG3gfGpM3nzu60LT7mH2r4Z+roMqyShs5X/dfw0GTenUfv1IbrD0Mb/kMKBQi+FKQF2kauVVvWxPCE8Q+Nh7Zuk4oiQaE9e0EQupPMUzDArZ6mFhI8JWyphITlhbd0y1bfB3g8oqZPJYy0x7esheW8g/82hVNvT9eeoEEBCfSHeaEnFXRPTiemVy4bR/fZbuTuaTaCA17yO2WUoJ3nujn/umxxx7kecPTvPCFK9GRzHZu+vxBsa//caSijfmh50/JQtaQeZOQwoZJxF5fDbaxQh+BctfEalehIzA0KT9NPHukU23dsd1R05gE+I+a1M+jhJshgmvVEROkSHWj15JevuJSsIY8PHTaEugPGiiJspHepKq81ofmI9d+neLnAnfJY4MCsxQQ3Ns2/hw/v8F/f5tEHCJtGPsTDLnaiwfB9owhwoy8QHzVag848cqYth+3K5wbg5jQTYEoSjmcPR5BLxMVZ/WZQxlLd+7zjCOF7SZF/yUWWX4PTMerDyxJQ+M7hVX5C7srztJmKYjGdUVMnmHsDoGvc9RUw4kySl6NibOUAKyOkpYIJ4UEHD+PS2/NfCFZng/vCaQSNjKeoev/MeDwcGFnYGW7x5Ou1Q8DYg+/lpB81zBRE+VCmFZCCErn02Uf34xvnj6yL3rS5M9/B0GhSMgr0VmSQEkQ/y+iRieHrNMqP6WLkduRJSuoZnOFj6RY71RIRjO/JUz4UWalybrtTXhVJpDiVGDZd7Gv4n+pCzE5YpkPhkFiLPoKx6LGepVBqme1iaWqJI+D13OlvvrnnHrkDeM7h8oo//+yGT7Am6rzY3lpD/oVHkKTHzO3pQqF6j/WeXJRY3MWcX1auIxlxDS2g3TcGn2mx9xfsD5BLMvmt1Ww8dnC7siVU28ARxrZNPeN3zbF+wUeMDUIbfOwb4PhHBtdU/sLoCtNhntn+irmzZPBlAuX+0M3gszmYtih6FMWZprjtjAprCKRmJ6/tuSuJC+WOeHWwy1NflvW2areI5fALSSs66LEpUBBddeGUTd1aBVH9isvBn3V+nna134ikX4k9PG7iBGbYTnURaA1Km5HQvsky6IJzkavgv7cYOTfWp6ZSZcsKFmTfIVYQUxKmrKsM3aBP263z45YjwDa+j5ADaUlss6600OaBNSULB6PwvR+dlDMMmXcC9Zaw5suwDMCAmXELWa32JJQJOdxSH3Rq+Rvt66fMUi6omSb9kGbLrbHhHIQLBkb02Toi5U2B2nQJcjTjUCy16WkvplfJuR5EwkYsWA2P2zrrFkLprQSd/krCSSw0hlf/xjNRKuUFDBal462ycTDt3T7uHf4uK61EwlVxrOeZVEGmehQnL+rM4SWvgWM6BVxqktkN2+bRfTm8j+Hkw24v0MCM/c3bVQYDTbYfYpFL7TudRuc01Lopb7TONjJ5vLqGISw9iDhkeKCvjWBkj6UjS9o7uRPq/TT2CNZMcO9sHMcUrx9ioTB8DL2PswlgboQu8GwGLCwlLwNt2SdjJu3zjo2niG5FnN3/KfPERuq+H5lQTqt6M8poiNH5GsvW9T9+yUu5+3UfC5zOtqUJqdKTDlx1Hd9Q/kGalYWK5+ckk09GNFh3CuJAOdOaGsXwn2jGS4iJJpG7fB+NpnA6VIyCviqvIecOoKOBAu1mE5PIG/Wcnb9YbP+qNveHILtiiZCoIgmMK/yPSae/H+oA4X2ucZaPlieP3LqWqXrggg8cvxmpWHKRpyppR0yDAzVUYmg5PzJ7UDXS8eTEOocCD/7fls7TOuZC+BK1ty2YUWziUGoJBBQIRn4cgR+Gz9s7yejNWh3xYDxBHpfyys0rY4A+2zc0UTl8O0Ato67NyfObzuscQ8j4tMGJ16eKgrR+dGty3zneB/W3NMDfTHNHHJwtmdHxhByr8vxhxjPiUzN5VDGkmcH3L5DP6EbyUQUar4BKQ3iCRxHTqE3GgXxj9dR6RczcFUndsJhNjoLKEa2mE/pLp/OG+bvwgS0VZv7q6W0/+TPO2c2fTVXV+f7LcY99gCbEqPhMmpimjkk12ELTugPZiCzgz5D3ZTFQKPT6IV3Ip4C1SUHb4qYHs3IWXzt+adydWfxtORWIFtQ32d+CSdXqS1wBiU5k1AS6yPbZibJLw/lJboo5Gth65IKwPt0hnhiqB6vrm6ei6s8qfILLMhuKdb1Os/Kiw78SHx+NDVc0oF32ygjenR2PWRFETL1OsW8Q9RZehj6VgWWR24KmudqUur4Ol9JyiVqsYfhf5Coe1P+qtpktFB6iLGmbmFWVBEdyaz/qjT9jBs2ayBNV36iN/cITIs9TRcuRb60X0RIa8+CqR2BCGsbYafiFajPDZJsguCCJcw+F7N1sXWa7DJtDou1DeZzuLuFoAa0d7CbFdqVhiilD2XvvC/Is/3M8IJ0c6Cynterie9O7BBBvbPcu73UmA6tJXi1u6XKMvmZ3KGhQdL9maoaHW26cJVhf4FenUQSQ9UnzMyysbO8TQdTDftis2Av+o903cZIS3j6bcBa+JgzR5aFsU3EEKzl1gZ/qDPdbK9BHvHKtmnZTiOxhwUIWVwW1OrYlbZe+MPFt7CkikNSNT4ye+htIzrWZixVdR+QWDPlc0lc4YNtuiEEs8agtg1gA", alt:"Due vere fedi nuziali dorate intrecciate", style:{display:"block",width:"280px",maxWidth:"85%",height:"auto",margin:"8px auto 18px",borderRadius:"12px",boxShadow:"0 8px 20px rgba(0,0,0,.28)"} }),
+      e("h2", { style:{color:"#e2bc73",fontFamily:"'Palatino Linotype','Book Antiqua',Georgia,serif",fontSize:"clamp(25px, 6vw, 38px)",fontStyle:"italic",fontWeight:"400",lineHeight:"1.35",marginBottom:"18px",letterSpacing:"-.7px",textShadow:"0 1px 2px rgba(0,0,0,.3)"} }, ui.welcome),
+      e("p", { style:{color:"#c7af96",fontFamily:"'Palatino Linotype','Book Antiqua',Georgia,serif",fontSize:"clamp(16px, 3.6vw, 21px)",fontStyle:"italic",lineHeight:"1.65",marginBottom:"10px"} }, ui.waitingSubtitle)
+    );
+  } else if (activeShares.length === 1) {
+    const share = activeShares[0];
+    const section = sections.find(s => s.id === share.sectionId);
+    body = renderShareCard(share, coupleLang, section, ui);
+  } else {
+    const idx = Math.max(0, Math.min(couplePageIndex, activeShares.length - 1));
+    const share = activeShares[idx];
+    const section = sections.find(s => s.id === share.sectionId);
+    const nav = e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:"20px", gap:"10px"} },
+      e("button", {
+        style:{padding:"8px 16px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:idx===0?"#504040":"#c8a96e", cursor:idx===0?"default":"pointer", fontSize:"13px"},
+        onClick: () => { if(idx>0){couplePageIndex=idx-1;render();} }
+      }, ui.prev),
+      e("span", { style:{color:"#706050", fontSize:"13px"} }, `${idx+1} ${ui.of} ${activeShares.length}`),
+      e("button", {
+        style:{padding:"8px 16px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:idx===activeShares.length-1?"#504040":"#c8a96e", cursor:idx===activeShares.length-1?"default":"pointer", fontSize:"13px"},
+        onClick: () => { if(idx<activeShares.length-1){couplePageIndex=idx+1;render();} }
+      }, ui.next)
+    );
+    body = e("div", {}, renderShareCard(share, coupleLang, section, ui), nav);
+  }
+
+  return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", background:"radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0d0d1a 70%)"} },
+    e("div", { style:{width:"100%", maxWidth:"540px", background:"rgba(255,255,255,0.04)", borderRadius:"24px", border:"1px solid rgba(200,169,110,0.2)", padding:"40px 32px"} },
+      backBtn, body
+    )
+  );
+}
+
+// ═══ SHARE FORM ═══
+function renderShareForm(sections, isLibrary) {
+  const inp = (placeholder, val, onChange) => {
+    const el = e("input", { placeholder, style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    el.value = val||"";
+    el.addEventListener("input", ev => onChange(ev.target.value));
+    return el;
+  };
+  const ta = (placeholder, val, onChange) => {
+    const el = e("textarea", { placeholder, rows:"3", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"14px", resize:"vertical", lineHeight:"1.6"} });
+    el.value = val||"";
+    el.addEventListener("input", ev => onChange(ev.target.value));
+    return el;
+  };
+
+  const form = isLibrary ? libForm : adminForm;
+  const editId = isLibrary ? libEditId : adminEditId;
+
+  const sectionSel = !isLibrary ? (() => {
+    const sel = e("select", { style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"#1a1a2e", color:"#e8dcc8", fontSize:"15px"} },
+      ...sections.map(sec => {
+        const opt = e("option", { value:sec.id }, sec.icon+" "+sec.label);
+        if (form.sectionId===sec.id) opt.selected=true;
+        return opt;
+      })
+    );
+    sel.addEventListener("change", ev => { form.sectionId=ev.target.value; });
+    return sel;
+  })() : null;
+
+  const translateBtn = e("button", {
+    style:{marginTop:"16px", width:"100%", padding:"11px", borderRadius:"10px", border:"1px solid rgba(100,180,255,0.35)", background:"rgba(100,180,255,0.07)", color:"#90c8ff", cursor:"pointer", fontSize:"14px", fontWeight:"600"},
+    onClick: async () => {
+      if (!form.translations.it.title && !form.translations.it.body) { alert("Inserisci prima il testo italiano!"); return; }
+      translateBtn.textContent = "⏳ Traduzione in corso…";
+      translateBtn.disabled = true;
+      const translated = await translateWithAI(form.translations.it.title, form.translations.it.body);
+      Object.assign(form.translations, translated);
+      render();
+    }
+  }, "🤖 Traduci automaticamente nelle altre 4 lingue");
+
+  const langBlocks = ["en","fr","es","pt"].map(code =>
+    e("div", { style:{marginTop:"16px", paddingTop:"16px", borderTop:"1px solid rgba(200,169,110,0.1)"} },
+      e("div", { style:{fontSize:"14px", color:"#a09080", marginBottom:"8px"} }, LANG_FLAGS[code]+" "+LANG_NAMES[code]),
+      inp("Titolo", form.translations[code]?.title, v=>{ form.translations[code].title=v; }),
+      e("div", { style:{marginTop:"8px"} }, ta("Testo…", form.translations[code]?.body, v=>{ form.translations[code].body=v; }))
+    )
+  );
+
+  const saveAction = isLibrary ? saveLibForm : saveForm;
+  const cancelAction = isLibrary
+    ? () => { libForm=null; libEditId=null; adminTab="library"; render(); }
+    : () => { adminTab="list"; adminForm=null; adminEditId=null; render(); };
+
+  return e("div", { style:{maxWidth:"620px"} },
+    e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px"} },
+      editId ? "✏️ Modifica condivisione" : (isLibrary ? "📦 Nuova condivisione in Libreria" : "➕ Nuova condivisione")
+    ),
+    isLibrary ? e("div", { style:{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"16px"} },
+      (() => {
+        const el = inp("Nome coppia (es. Ugo e Anna)", form.coupleName, v=>{ form.coupleName=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "👫 Nome coppia"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Comunità/Paese (es. Italia)", form.community, v=>{ form.community=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "🌍 Comunità"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Giorno (es. Sabato 28 nov)", form.day, v=>{ form.day=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "📅 Giorno"),
+          el
+        );
+      })(),
+      (() => {
+        const el = inp("Orario (es. 21:30)", form.time, v=>{ form.time=v; });
+        return e("div", {},
+          e("label", { style:{fontSize:"12px", color:"#a09080", display:"block", marginBottom:"4px"} }, "🕐 Orario"),
+          el
+        );
+      })()
+    ) : null,
+    !isLibrary ? e("div", {},
+      e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px"} }, "Sezione del weekend"),
+      sectionSel
+    ) : null,
+    e("div", {style:{marginTop:"16px", padding:"12px",border:"1px solid rgba(200,169,110,.3)",borderRadius:"10px"}},
+      e("label", {style:{display:"block",marginBottom:"8px",color:"#e8c87a",fontSize:"14px"}}, "🎙️ Lingua parlata dal relatore"),
+      (()=>{const sel=e("select",{style:{width:"100%",padding:"10px",borderRadius:"8px",background:"#1a1a2e",color:"#e8dcc8",fontSize:"15px"},onChange:ev=>{form.speakerLanguage=ev.target.value;}});
+        for(const [code,label] of [["","Da impostare"],["it","Italiano"],["es","Español"],["fr","Français"],["en","English"],["pt","Português"]]){const opt=e("option",{value:code},label);if((form.speakerLanguage||"")===code)opt.selected=true;sel.append(opt);}
+        return sel;})(),
+      e("p",{style:{fontSize:"12px",color:"#a09080",marginTop:"8px"}},"Il microfono userà automaticamente questa lingua quando attivi la condivisione. Non cambia le lingue visualizzate dalle coppie.")
+    ),
+    e("label", { style:{display:"block", fontSize:"12px", color:"#a09080", letterSpacing:"1px", textTransform:"uppercase", marginBottom:"6px", marginTop:"16px"} }, "URL immagine (opzionale)"),
+    inp("https://…", form.imageUrl, v=>{ form.imageUrl=v; }),
+    e("div", { style:{marginTop:"20px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.35)", background:"rgba(200,169,110,0.05)"} },
+      e("div", { style:{fontSize:"15px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "🇮🇹 Italiano — testo di partenza"),
+      inp("Titolo", form.translations.it.title, v=>{ form.translations.it.title=v; }),
+      e("div", { style:{marginTop:"10px"} }, ta("Testo della condivisione…", form.translations.it.body, v=>{ form.translations.it.body=v; }))
+    ),
+    translateBtn,
+    ...langBlocks,
+    e("div", { style:{display:"flex", gap:"12px", marginTop:"24px"} },
+      e("button", { style:{padding:"10px 28px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"15px"}, onClick:saveAction }, "💾 Salva"),
+      e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer", fontSize:"15px"}, onClick:cancelAction }, "Annulla")
+    )
+  );
+}
+
+// ═══ ADMIN VIEW ═══
+function renderAdmin() {
+  if (!adminAuth) {
+    const emailInput = e("input", { type:"email", placeholder:"Email amministratore", autocomplete:"username", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"15px", marginBottom:"10px"} });
+    const passwordInput = e("input", { type:"password", placeholder:"Password", autocomplete:"current-password", style:{width:"100%", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.3)", background:"rgba(255,255,255,0.05)", color:"#e8dcc8", fontSize:"15px"} });
+    const errMsg = e("p", { style:{color:"#ff6b6b", fontSize:"13px", marginTop:"8px", display:"none"} }, "Email o password non corretti");
+    const tryLogin = async () => {
+      errMsg.style.display = "none";
+      try {
+        const cred = await signInWithEmailAndPassword(auth, emailInput.value.trim(), passwordInput.value);
+        if (cred.user.uid !== ADMIN_UID) {
+          await signOut(auth);
+          errMsg.textContent = "Questo account non è autorizzato come amministratore";
+          errMsg.style.display = "block";
+          return;
+        }
+        adminAuth = true;
+        render();
+      } catch (err) {
+        errMsg.textContent = "Email o password non corretti";
+        errMsg.style.display = "block";
+      }
+    };
+    passwordInput.addEventListener("keydown", ev => ev.key === "Enter" && tryLogin());
+    return e("div", { style:{minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center"} },
+      e("div", { style:{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(200,169,110,0.2)", borderRadius:"20px", padding:"40px 32px", textAlign:"center", width:"330px"} },
+        e("div", { style:{fontSize:"42px", marginBottom:"8px"} }, "🔐"),
+        e("h2", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"20px", fontWeight:"400"} }, "Area Amministratore"),
+        emailInput, passwordInput, errMsg,
+        e("button", { style:{marginTop:"16px", width:"100%", padding:"10px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"16px"}, onClick:tryLogin }, "Accedi")
+      )
+    );
+  }
+
+  const sections = [...(appState.sections || [])].sort((a,b) => a.order - b.order);
+  const coupleUrl = window.location.href.replace(/#.*/,"") + "#couple";
+  const mode = appState.displayMode || "one";
+
+  const tabBtn = (t, label) => e("button", {
+    style:{padding:"6px 14px", borderRadius:"20px", border:`1px solid ${adminTab===t?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:adminTab===t?"rgba(200,169,110,0.15)":"transparent", color:adminTab===t?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px"},
+    onClick: () => {
+      if(t==="add"){ adminFormTarget="shares"; openNewForm(null); }
+      else { adminTab=t; adminForm=null; libForm=null; if(t!=="import"){ importItems=[]; importError=""; } render(); }
+    }
+  }, label);
+
+  const header = e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 20px", background:"rgba(200,169,110,0.05)", borderBottom:"1px solid rgba(200,169,110,0.12)", flexWrap:"wrap"} },
+    e("span", { style:{fontSize:"17px", color:"#c8a96e", fontWeight:"600", whiteSpace:"nowrap"} }, "💞 Meeting Admin"),
+    e("div", { style:{display:"flex", gap:"8px", flex:"1", flexWrap:"wrap"} },
+      tabBtn("list","📋 Programma"), tabBtn("remote","📱 Telecomando"), tabBtn("add","➕ Nuova"), tabBtn("import","📥 Carica condivisioni e slide"), tabBtn("library","📦 Libreria"), tabBtn("sections","🗂️ Sezioni"), tabBtn("qr","📲 QR Code")
+    ),
+    e("button", { style:{padding:"6px 14px", borderRadius:"20px", border:"1px solid rgba(255,100,100,0.3)", background:"transparent", color:"#ff9090", cursor:"pointer", fontSize:"12px"}, onClick:async()=>{await signOut(auth); adminAuth=false; render();} }, "Esci")
+  );
+
+  let bodyContent;
+
+  // ── TELECOMANDO ──
+  if (adminTab === "remote") {
+    bodyContent = e("div", {style:{maxWidth:"460px",margin:"0 auto"}}, reading.remotePanel());
+  }
+  else
+  // ── TAB: PROGRAMMA ──
+  if (adminTab === "list") {
+    const modeBar = e("div", { style:{padding:"14px 16px", borderRadius:"12px", background:"rgba(200,169,110,0.06)", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"20px"} },
+      e("div", { style:{fontSize:"13px", color:"#c8a96e", fontWeight:"600", marginBottom:"10px", letterSpacing:"1px"} }, "📺 MODALITÀ VISUALIZZAZIONE COPPIE"),
+      e("div", { style:{display:"flex", gap:"8px", flexWrap:"wrap"} },
+        ...[
+          ["one",      "🔴 Una sola",   "Le coppie vedono solo la condivisione attivata"],
+          ["selected", "📋 Selezione",  "Le coppie scorrono tra quelle selezionate"],
+          ["all",      "📖 Tutte",      "Le coppie vedono tutte le condivisioni"]
+        ].map(([m, label, desc]) =>
+          e("button", {
+            style:{padding:"8px 16px", borderRadius:"10px", border:`2px solid ${mode===m?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:mode===m?"rgba(200,169,110,0.15)":"transparent", color:mode===m?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"13px", textAlign:"left"},
+            onClick: async () => { await saveState({...appState, displayMode:m}); }
+          },
+            e("div", { style:{fontWeight:"600"} }, label),
+            e("div", { style:{fontSize:"11px", opacity:"0.7", marginTop:"2px"} }, desc)
+          )
+        )
+      )
+    );
+
+    const activeShares = getActiveShares();
+    let statusText = "";
+    if (mode === "one") {
+      const active = appState.shares?.find(s => s.id === appState.activeShareId);
+      statusText = active ? `Attiva: "${active?.translations?.it?.title||""}"` : "Nessuna condivisione attiva — le coppie vedono la schermata di attesa";
+    } else if (mode === "selected") {
+      const n = (appState.selectedShareIds||[]).length;
+      statusText = n > 0 ? `${n} condivisioni selezionate` : "Nessuna selezionata — le coppie vedono la schermata di attesa";
+    } else {
+      statusText = `Tutte visibili (${appState.shares?.length||0}) — le coppie possono scorrere`;
+    }
+
+    const statusBar = e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 16px", borderRadius:"10px", background:"rgba(200,169,110,0.06)", marginBottom:"20px", fontSize:"14px", color:"#a09080"} },
+      e("span", { style:{width:"10px", height:"10px", borderRadius:"50%", flexShrink:"0", background:activeShares.length>0?"#4caf50":"#555", boxShadow:activeShares.length>0?"0 0 6px #4caf50":"none", display:"inline-block"} }),
+      statusText
+    );
+
+    const filters = e("div", { style:{display:"flex", gap:"8px", marginBottom:"18px", flexWrap:"wrap"} },
+      e("button", { style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${filterSection==="all"?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:filterSection==="all"?"rgba(200,169,110,0.15)":"transparent", color:filterSection==="all"?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"}, onClick:()=>{filterSection="all";render();} }, "Tutte"),
+      ...sections.map(sec => e("button", {
+        style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${filterSection===sec.id?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:filterSection===sec.id?"rgba(200,169,110,0.15)":"transparent", color:filterSection===sec.id?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"},
+        onClick:()=>{filterSection=sec.id;render();}
+      }, sec.icon+" "+sec.label))
+    );
+
+    const grouped = sections
+      .filter(sec => filterSection==="all" || sec.id===filterSection)
+      .map(sec => {
+        const shares = (appState.shares||[]).filter(s=>s.sectionId===sec.id);
+        const secHeader = e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:"15px", color:"#c8a96e", fontWeight:"600", marginBottom:"8px", paddingBottom:"6px", borderBottom:"1px solid rgba(200,169,110,0.15)"} },
+          e("span", {}, sec.icon+" "+sec.label),
+          e("span", { style:{fontSize:"12px", color:"#706050", fontWeight:"400"} }, `(${shares.length})`),
+          e("button", { style:{padding:"3px 12px", borderRadius:"16px", border:"1px solid rgba(200,169,110,0.4)", background:"rgba(200,169,110,0.1)", color:"#c8a96e", cursor:"pointer", fontSize:"13px", fontWeight:"600"}, onClick:()=>openNewForm(sec.id) }, "➕ Aggiungi")
+        );
+
+        const shareRows = shares.length===0
+          ? [e("div", { style:{color:"#504040", fontSize:"13px", padding:"6px 0"} }, "Nessuna condivisione in questa sezione")]
+          : shares.map((share, idx) => {
+            const isActiveOne = share.id === appState.activeShareId;
+            const isSelected = (appState.selectedShareIds||[]).includes(share.id);
+            const isHighlighted = mode==="one" ? isActiveOne : mode==="selected" ? isSelected : true;
+
+            let actionBtn;
+            if (mode === "one") {
+              actionBtn = e("button", {
+                style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isActiveOne?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isActiveOne?"rgba(76,175,80,0.2)":"transparent", color:isActiveOne?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:async()=>{try{await activateShare(share.id);}catch(err){alert('Impossibile attivare la condivisione: '+(err.message||err));}}
+              }, isActiveOne?"● ATTIVA":"Attiva");
+            } else if (mode === "selected") {
+              actionBtn = e("button", {
+                style:{padding:"5px 14px", borderRadius:"16px", border:`1px solid ${isSelected?"#4caf50":"rgba(200,169,110,0.4)"}`, background:isSelected?"rgba(76,175,80,0.2)":"transparent", color:isSelected?"#4caf50":"#c8a96e", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:()=>toggleSelected(share.id)
+              }, isSelected?"✓ Selezionata":"Seleziona");
+            } else {
+              actionBtn = e("span", { style:{fontSize:"12px", color:"#4caf50", padding:"5px 8px"} }, "✓ Visibile");
+            }
+
+            // Order buttons
+            const orderBtns = e("div", { style:{display:"flex", flexDirection:"column", gap:"2px"} },
+              e("button", { style:{background:"transparent", border:"none", cursor:idx===0?"default":"pointer", fontSize:"14px", color:idx===0?"#504040":"#a09080", lineHeight:"1"}, onClick:()=>moveShare(sec.id, idx, -1) }, "▲"),
+              e("button", { style:{background:"transparent", border:"none", cursor:idx===shares.length-1?"default":"pointer", fontSize:"14px", color:idx===shares.length-1?"#504040":"#a09080", lineHeight:"1"}, onClick:()=>moveShare(sec.id, idx, 1) }, "▼")
+            );
+
+            return e("div", { style:{display:"flex", alignItems:"center", gap:"10px", padding:"10px 14px", borderRadius:"10px", border:`1px solid ${isHighlighted?"rgba(76,175,80,0.5)":"rgba(200,169,110,0.1)"}`, marginBottom:"6px", background:isHighlighted?"rgba(76,175,80,0.05)":"rgba(255,255,255,0.02)"} },
+              orderBtns,
+              e("div", { style:{flex:"1"} },
+                e("strong", { style:{color:"#e8dcc8"} }, share.translations?.it?.title||"—"),
+                e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
+                  (share.coupleName ? "👫 "+share.coupleName+" · " : "") +
+                  (share.day ? "📅 "+share.day+" " : "") +
+                  (share.time ? "🕐 "+share.time+" " : "") +
+                  Object.keys(LANG_FLAGS).filter(l=>share.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ")
+                )
+              ),
+              e("div", { style:{display:"flex", gap:"6px", alignItems:"center", flexWrap:"wrap"} },
+                !share.publicTextFile && share.translations?.it?.title==='Region Italia – Nicola e Antonella'
+                  ? e("button",{title:"Sposta i testi su GitHub dopo verifica completa",style:{padding:"5px 8px",border:"1px solid #c8a96e",borderRadius:"8px",background:"transparent",color:"#c8a96e",cursor:"pointer",fontSize:"12px"},
+                      onClick:async()=>{try{await archiveRegionItaliaShare(share.id);}catch(err){alert('Non ho modificato la relazione: '+(err.message||err));}}},
+                      "☁️ Su GitHub") : null,
+                share.publicTextFile ? e("span",{style:{color:"#c8a96e",fontSize:"12px"}},"☁️ GitHub"):null,
+                e("button", {title:"Sposta in un'altra sezione",style:{padding:"5px 8px",border:"1px solid rgba(200,169,110,.4)",borderRadius:"8px",background:"transparent",color:"#c8a96e",cursor:"pointer",fontSize:"12px"},onClick:()=>openMoveSectionPicker(share)}, "↪ Sposta sezione"),
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>share.publicTextFile?openPublicMetaForm(share):openEditForm(share) }, "✏️"),
+                e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteShare(share.id) }, "🗑️"),
+                actionBtn
+              )
+            );
+          });
+        return e("div", { style:{marginBottom:"28px"} }, secHeader, ...shareRows);
+      });
+
+    bodyContent = e("div", {}, modeBar, statusBar, filters, ...grouped);
+  }
+
+  // ── TAB: Lingua letta dal relatore (testi su GitHub) ──
+  else if (adminTab === "publicmeta" && publicMetaDraft) {
+    const draft=publicMetaDraft;
+    const speaker=e("select",{style:{padding:"12px",background:"#1a1a2e",color:"#e8dcc8",border:"1px solid rgba(200,169,110,0.4)",borderRadius:"10px",fontSize:"16px",width:"100%"}});
+    for(const [code,label] of [["","Da impostare"],["it","Italiano"],["es","Español"],["fr","Français"],["en","English"],["pt","Português"]]){
+      const opt=e("option",{value:code},label);
+      if(draft.speakerLanguage===code)opt.selected=true;
+      speaker.append(opt);
+    }
+    speaker.addEventListener("change",ev=>{draft.speakerLanguage=ev.target.value;});
+    const feedback=e("p",{style:{color:"#ffbf92",fontSize:"13px",marginTop:"12px"}});
+    const saveBtn=e("button",{style:{padding:"11px 22px",borderRadius:"18px",border:"none",background:"#c8a96e",fontSize:"15px",fontWeight:"700",cursor:"pointer"},onClick:async()=>{
+      saveBtn.disabled=true;
+      feedback.textContent="Salvataggio lingua in corso…";
+      try{
+        await runTransaction(firestore,async tx=>{
+          const ref=doc(firestore,"state","main"),snap=await tx.get(ref);
+          if(!snap.exists())throw Error("Database non disponibile");
+          const state=snap.data();
+          const current=(state.shares||[]).find(x=>x.id===draft.id);
+          if(!current||!current.publicTextFile)throw Error("La relazione non è più archiviata su GitHub");
+          tx.update(ref,{shares:state.shares.map(x=>x.id===draft.id?{...x,speakerLanguage:draft.speakerLanguage}:x)});
+        });
+        publicMetaDraft=null;
+        adminTab="list";
+        render();
+      }catch(err){saveBtn.disabled=false;feedback.textContent="Errore: "+(err.message||err);}
+    }},"💾 Salva lingua del relatore");
+    bodyContent=e("div",{style:{maxWidth:"600px"}},
+      e("h3",{style:{fontSize:"21px",color:"#c8a96e",marginBottom:"12px"}},"🎤 Lingua parlata dal relatore"),
+      e("p",{style:{color:"#e8dcc8",marginBottom:"10px"}},"Relazione: "+draft.title),
+      e("p",{style:{fontSize:"13px",color:"#a09080",marginBottom:"16px"}},"Questa impostazione controlla la lingua ascoltata dal microfono. Non modifica i testi e le traduzioni pubblicati su GitHub."),
+      speaker,
+      e("div",{style:{display:"flex",gap:"12px",flexWrap:"wrap",marginTop:"20px"}},
+        saveBtn,
+        e("button",{style:{padding:"11px 20px",borderRadius:"18px",border:"1px solid #806f5a",background:"transparent",color:"#e8dcc8",cursor:"pointer"},onClick:()=>{publicMetaDraft=null;adminTab="list";render();}},"Annulla")),
+      feedback);
+  }
+
+  // ── TAB: NUOVA (form) ──
+  else if (adminTab === "add" && adminForm) {
+    bodyContent = renderShareForm(sections, false);
+  }
+
+  // ── TAB: IMPORTA ──
+  else if (adminTab === "import") {
+    const fileInput = e("input", { type:"file", accept:".json,.zip,application/json,application/zip", style:{display:"block", width:"100%", padding:"12px", borderRadius:"10px", border:"1px dashed rgba(200,169,110,0.4)", background:"rgba(255,255,255,0.03)", color:"#e8dcc8", marginTop:"14px"} });
+    fileInput.addEventListener("change", async ev => {
+      importError = ""; importItems = [];
+      const file = ev.target.files?.[0];
+      if (!file) { render(); return; }
+      try {
+        let parsed;
+        importZip = null;
+        if (/\.zip$/i.test(file.name)) {
+          if(!/^[a-zA-Z0-9_-]+\.zip$/.test(file.name))throw Error('Nome ZIP non valido: usare solo lettere, numeri, - e _.');
+           const zip = await JSZip.loadAsync(file);
+          const entries = Object.keys(zip.files);
+          const find = basename => entries.find(p => p.split('/').pop().toLowerCase()===basename.toLowerCase());
+          const jsonEntry = find('IMPORTA_TESTI_5_LINGUE.json');
+          const posEntry = find('POSIZIONE_SLIDE.json');
+          if (!jsonEntry || !posEntry) throw Error("Lo ZIP deve contenere IMPORTA_TESTI_5_LINGUE.json e POSIZIONE_SLIDE.json.");
+          parsed = JSON.parse(await zip.file(jsonEntry).async('string'));
+          const positions = JSON.parse(await zip.file(posEntry).async('string'));
+          const mapping = positions.slide_positions || [];
+          if (!mapping.length) throw Error("Manca l'elenco delle posizioni delle slide.");
+          const allowed = ['it','fr','es','en','pt'];
+          const batches = mapping.map(p => {
+            const images={};
+            for (const lang of allowed) {
+              const filename = lang+'/slide_'+String(p.slide).padStart(2,'0')+'.webp';
+              const key = entries.find(k => k.toLowerCase().endsWith('/'+filename) || k.toLowerCase()===filename);
+              if (!key || !zip.file(key)) throw Error("Nello ZIP manca "+filename);
+              images[lang] = key;
+            }
+            if (!Number.isInteger(p.afterBlock) || p.afterBlock < -1) throw Error("Posizione slide non valida");
+            return {number:p.slide,afterBlock:p.afterBlock,images};
+          });
+          importZip = {zip,batches,name:file.name.replace(/\.zip$/i,'_slides.zip'),replaceShareId:positions.replaceShareId};
+        } else {
+          parsed = JSON.parse(await file.text());
+        }
+        const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.shares) ? parsed.shares : []);
+        if (!source.length) throw new Error("Il file non contiene condivisioni.");
+        const validSections = new Set((appState.sections||[]).map(s=>s.id));
+        const fallbackSection = (appState.sections||[])[0]?.id || "ven-sera";
+        importItems = source.map((item, idx) => ({
+          id:"preview-"+idx,
+          sectionId: validSections.has(item.sectionId) ? item.sectionId : fallbackSection,
+          imageUrl:String(item.imageUrl||""),
+          coupleName:String(item.coupleName||""),
+          day:String(item.day||""),
+          time:String(item.time||""),
+          speakerLanguage:["it","en","fr","es","pt"].includes(item.speakerLanguage) ? item.speakerLanguage : "",
+          translations:Object.fromEntries(Object.keys(LANG_NAMES).map(code=>[code,{title:String(item.translations?.[code]?.title||""),body:String(item.translations?.[code]?.body||"")}]))
+        })).filter(item => item.translations.it.title || item.translations.it.body).map(item => ({
+          ...item,
+          readingBlocks:alignedReadingBlocks(item.translations)
+        }));
+        if (!importItems.length) throw new Error("Non ho trovato testi italiani validi da importare.");
+      } catch(err) { importError = err?.message || "File non valido."; }
+      render();
+    });
+
+    const previewRows = importItems.map((item, idx) => {
+      const sec = (appState.sections||[]).find(s=>s.id===item.sectionId);
+      const langs = Object.keys(LANG_FLAGS).filter(code => item.translations?.[code]?.title || item.translations?.[code]?.body).map(code=>LANG_FLAGS[code]).join(" ");
+      const alignment = item.readingBlocks ? " · ✅ "+item.readingBlocks.length+" passaggi sincronizzati" : " · ⚠️ Allineamento da verificare";
+      return e("div", { style:{padding:"12px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+        e("div", { style:{display:"flex", justifyContent:"space-between", gap:"10px", flexWrap:"wrap"} },
+          e("strong", { style:{color:"#e8dcc8"} }, (idx+1)+". "+(item.translations.it.title || "Senza titolo")),
+          e("span", { style:{fontSize:"12px", color:"#c8a96e"} }, langs)
+        ),
+        e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"5px"} },
+          (sec ? sec.icon+" "+sec.label : item.sectionId) +
+          (item.coupleName ? " · 👫 "+item.coupleName : "") +
+          (item.day ? " · 📅 "+item.day : "") +
+          (item.time ? " · 🕐 "+item.time : "") + alignment
+        )
+      );
+    });
+
+    const isItaliaCentroImport=importItems.length===1&&['Relazione Comunità Italia Centro','Relazione Comunità Italia Nord-Ovest'].includes(importItems[0]?.translations?.it?.title);
+    const confirmBtn = importItems.length && !isItaliaCentroImport ? e("button", {
+      style:{padding:"10px 22px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"},
+      onClick: async () => {
+        if (importBusy) return;
+        importBusy=true;
+        confirmBtn.disabled=true;
+        confirmBtn.textContent="Caricamento in corso…";
+        try {
+          const stamp = Date.now();
+          const newShares = importItems.map((item, idx) => ({...item, id:"s"+stamp+"-"+idx}));
+          let existing=null;
+          if (importZip) {
+            if (newShares.length !== 1) throw Error("Il pacchetto prova deve contenere una sola relazione.");
+            const target = newShares[0];
+            if (importZip.replaceShareId) {
+              confirmBtn.textContent='Verifica delle 18 slide e dei testi…';
+              await replaceFridayRowShare(target,importZip);
+              importItems=[];importError="";importZip=null;adminTab="list";render();
+              alert('Scheda del venerdì aggiornata: 18 slide e testi in cinque lingue.');
+              return;
+            }
+            existing=(appState.shares||[]).find(s =>
+              s.translations?.it?.title===target.translations.it.title &&
+              ['it','fr','es','en','pt'].every(lang => s.translations?.[lang]?.body===target.translations[lang].body)
+            );
+            if (!existing && (appState.shares||[]).some(s=>s.translations?.it?.title===target.translations.it.title))
+              throw Error("Esiste già una relazione con lo stesso titolo ma testi diversi: nessuna copia creata.");
+            const originalBlocks=existing?.readingBlocks||target.readingBlocks;
+            if (!originalBlocks?.length) throw Error("Le cinque lingue non hanno passaggi corrispondenti. Controlla i testi del pacchetto.");
+            // Le immagini risiedono nello ZIP pubblicato su GitHub Pages.
+            // Nel database rimangono solo gli indici e il nome archivio.
+            const langOrder=['it','fr','es','en','pt'];
+            confirmBtn.textContent='Verifica archivio ZIP su GitHub…';
+            await checkSlideArchive(importZip.name,importZip.batches.map(s=>s.number));
+            const slides=importZip.batches.map(spec=>{
+              if(spec.afterBlock>=originalBlocks.length)throw Error('Posizione slide non valida: '+spec.number);
+              return {number:spec.number,afterBlock:spec.afterBlock,images:{}};
+            });
+            confirmBtn.textContent='Collegamento slide senza appesantire Firebase…';
+            // Aggiorna solo le immagini della relazione esistente con dati freschi.
+            // Non riscrive readingFollow, readingRemote, selezione, comandi o altre impostazioni.
+            await runTransaction(firestore, async tx => {
+              const stateRef=doc(firestore,"state","main");
+              const snap=await tx.get(stateRef);
+              if (!snap.exists()) throw Error("Database non disponibile: nessuna relazione modificata.");
+              const live=snap.data();
+              const sameTitle=(live.shares||[]).filter(s=>s.translations?.it?.title===target.translations.it.title);
+              const matches=sameTitle.filter(s=>
+                langOrder.every(lang=>s.translations?.[lang]?.body===target.translations[lang].body));
+              if(matches.length>1 || sameTitle.length!==matches.length)
+                throw Error("Titolo duplicato o testi diversi: nessuna importazione eseguita.");
+              const current=matches[0]||target;
+              if(existing && current.id!==existing.id)
+                throw Error("La relazione esistente è cambiata. Nessun salvataggio eseguito.");
+              if(!Array.isArray(current.readingBlocks)||!current.readingBlocks.length)
+                throw Error("I passaggi nelle cinque lingue non sono disponibili.");
+              if(slides.some(s=>s.afterBlock>=current.readingBlocks.length))
+                throw Error("Una posizione slide supera il numero di passaggi attuali.");
+              const refined=refineReadingForSlides(current.readingBlocks,slides,current.translations);
+              const updated={...current,inlineSlides:refined.inlineSlides,slideArchive:importZip.name,readingBlocks:refined.blocks,readingSegmentationVersion:2};
+              const shares=matches.length
+                ? live.shares.map(s=>s.id===current.id?updated:s)
+                : [...(live.shares||[]),updated];
+              const patch={shares};
+              if(live.readingFollow?.shareId===current.id){
+                patch.readingFollow={...live.readingFollow,session:crypto.randomUUID(),
+                  blocks:refined.blocks,index:0,revision:(live.readingFollow.revision||0)+1};
+              }
+              const totalBytes=new TextEncoder().encode(JSON.stringify({...live,...patch})).length;
+              if(totalBytes>850000) throw Error('Spazio insufficiente nel database ('+Math.round(totalBytes/1024)+' KB). Nessuna relazione modificata.');
+              tx.update(stateRef,patch);
+            });
+          } else {
+            // Controllo preventivo: non provare a salvare documenti oltre il limite prudenziale.
+            // La relazione attiva, il QR e l'integrazione microfono rimangono invariati.
+            const proposed={...appState,shares:[...(appState.shares||[]),...newShares]};
+            const proposedBytes=new TextEncoder().encode(JSON.stringify(proposed)).length;
+            if(proposedBytes>850000){
+              const currentBytes=new TextEncoder().encode(JSON.stringify(appState)).length;
+              const addedKb=Math.round((proposedBytes-currentBytes)/1024);
+              throw Error('Questa importazione richiede circa '+addedKb+
+                ' KB aggiuntivi e supererebbe il limite prudenziale del database. '+
+                'Non è stato salvato nulla. Conserva il file originale: prima occorre '+
+                'attivare la suddivisione dei testi in documenti Firebase separati.');
+            }
+            await saveState(proposed);
+          }
+          const n = newShares.length;
+          importItems=[];importError="";importZip=null;adminTab="list";render();
+          alert(existing?"Slide collegate alla relazione già presente. Passaggi di lettura brevi preparati automaticamente.":"Relazione e slide importate insieme. Passaggi brevi preparati automaticamente.");
+        } catch(err) {
+          importError=err?.message||String(err);
+          confirmBtn.textContent='⚠️ Errore: '+importError+' · riprova';
+          confirmBtn.disabled=false;
+        } finally {importBusy=false;}
+      }
+    }, "✅ Conferma importazione ("+importItems.length+")") : null;
+
+    bodyContent = e("div", { style:{maxWidth:"720px"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "📥 Carica condivisioni e slide"),
+      e("div", {style:{padding:"14px",border:"1px solid rgba(200,169,110,0.35)",borderRadius:"12px",margin:"12px 0 16px",lineHeight:"1.6",fontSize:"13px",color:"#e8dcc8",background:"rgba(200,169,110,0.06)"}},
+        e("strong",{}, "Dove vengono conservati i materiali"),
+        e("p",{style:{margin:"8px 0"}},"TESTI nelle 5 lingue: le relazioni autorizzate possono essere conservate su GitHub e attivate dal Programma. Le altre restano in Firebase. La prima prova è disponibile per Region Italia, dopo una verifica completa."),
+        e("p",{style:{margin:"8px 0"}},"SLIDE: vengono lette da GitHub. I testi delle relazioni archiviate, come Nicola e Antonella e Italia Centro, sono anch’essi su GitHub; Firebase conserva soltanto metadati e lettura attiva."),
+        e("a",{href:"https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives",target:"_blank",rel:"noopener noreferrer",style:{color:"#e8c87a",textDecoration:"underline"}},"Apri la cartella GitHub per caricare lo ZIP delle slide"),
+        e("p",{style:{margin:"8px 0 0",color:"#c8b6a1"}},"Nessuna modifica al QR, al microfono o alle condivisioni già presenti.")
+      ),
+      e("p", { style:{fontSize:"14px", color:"#a09080", lineHeight:"1.6"} }, "Puoi caricare i nuovi file JSON con i testi nelle cinque lingue. L'app controlla lo spazio prima del salvataggio e non cancella nulla se il limite viene superato. Per i pacchetti con slide serve ancora il relativo archivio immagini su GitHub. I testi e le traduzioni restano privati in Firebase."),
+      e("div",{style:{border:'1px solid rgba(200,169,110,.5)',borderRadius:'12px',padding:'16px',margin:'18px 0',background:'rgba(200,169,110,.07)'}},
+        e("strong",{},"☁️ Collega una condivisione già archiviata su GitHub · verifica Madrid 11:58"),
+        e("p",{style:{fontSize:'13px',margin:'9px 0',lineHeight:'1.6'}},"Seleziona la comunità. I testi nelle cinque lingue e le slide restano su GitHub. Firebase conserva soltanto i metadati della relazione non attiva."),
+        (()=>{
+          const chooser=e('select',{style:{width:'100%',padding:'12px',margin:'4px 0 12px',border:'1px solid rgba(200,169,110,.6)',borderRadius:'9px',background:'#22202b',color:'#e8dcc8'}},
+            e('option',{value:'annuncioPortogalloAnnalisa'},'Sabato sera – Annalisa, nascita ufficiale della Comunità Retrouvaille Portogallo (5 lingue)'),
+            e('option',{value:'introduzioneOlandaAnnalisa'},'Sabato mattina – Annalisa, introduzione Gerard ed Elena (Olanda, 5 lingue)'),
+            e('option',{value:'introduzioneInghilterraGallesAnnalisa'},'Sabato mattina – Annalisa, introduzione Sharon e James (Inghilterra e Galles, 5 lingue)'),
+            e('option',{value:'introduzioneSudMarcelo'},'Sabato mattina – Marcelo, introduzione Italia Sud (5 lingue)'),
+            e('option',{value:'introduzioneCentroAnnalisa'},'Sabato mattina – Annalisa, introduzione Italia Centro (5 lingue)'),
+            e('option',{value:'introduzioneNordEstAnnalisa'},'Sabato mattina – Annalisa, introduzione Italia Nord-Est (5 lingue)'),
+            e('option',{value:'introduzioneNordOvestMarcelo'},'Sabato mattina – Marcelo, introduzione di Samantha e Christian (Italia Nord-Ovest, 5 lingue)'),
+            e('option',{value:'presentazioneRegionItaliaMarcelo'},'Sabato mattina – Marcelo, presentazione REGION ITALIA (5 lingue)'),
+            e('option',{value:'introduzioneValenciaAnnalisa'},'Sabato mattina – Annalisa, introduzione di Valencia (5 lingue)'),
+            e('option',{value:'introduzioneMadridMarcelo'},'Sabato mattina – Marcelo, introduzione di David e Andrea (Madrid, 5 lingue)'),
+            e('option',{value:'introduzioneLilianaAnnalisa'},'Sabato mattina – Annalisa, introduzione di Liliana Verde (5 lingue)'),
+            e('option',{value:'aperturaSabatoMarcelo'},'Sabato mattina – Marcelo, buongiorno e inizio lavori (5 lingue)'),
+            e('option',{value:'preghieraSabato'},'Sabato mattina – Preghiera: Ti do tutto, Signore (5 lingue)'),
+            e('option',{value:'chiusuraVenerdiMarcelo'},'Venerdì sera – Marcelo, programma del sabato e benedizione finale (5 lingue)'),
+            e('option',{value:'presentazioneMarkMariaLuisaMarcelo'},'Venerdì sera – Annalisa, presentazione di Mark e Maria Luisa (5 lingue)'),
+            e('option',{value:'markVenerdi'},'Venerdì sera – Mark e Maria Luisa – ROW (18 slide, 5 lingue)'),
+            e('option',{value:'presentazionePaulTracyMarcelo'},'Venerdì sera – Marcelo, presentazione di Paul e Tracy Satterfield (5 lingue)'),
+            e('option',{value:'ringraziamentoTeamFranciaAnnalisa'},'Venerdì sera – Annalisa, ringraziamento a Philibert e Benigne (5 lingue)'),
+            e('option',{value:'colombaAnnalisa'},'Venerdì sera – Annalisa, il simbolo della colomba (5 lingue)'),
+            e('option',{value:'benvenutoAnnalisa'},'Venerdì sera – Annalisa, benvenuto e seme della speranza (solo testo, 5 lingue)'),
+            e('option',{value:'introduzioneFrancesco'},'Sabato pomeriggio – Annalisa, introduzione a don Francesco De Vita (solo testo, 5 lingue)'),
+            e('option',{value:'donFrancesco'},'Sabato pomeriggio – Don Francesco De Vita, biografia e relazione (solo testo, 5 lingue)'),
+            e('option',{value:'nordovest'},'Sabato mattina – Samantha e Cristian, Italia Nord-Ovest'),
+            e('option',{value:'centro'},'Sabato mattina – Roby e Silvia, Italia Centro'),
+            e('option',{value:'madrid'},'Madrid – presentazione in spagnolo (sezione provvisoria: sabato mattina)'),
+            e('option',{value:'nordest'},'Italia Nord-Est – solo relazione scritta (sezione provvisoria: sabato mattina)'),
+            e('option',{value:'valencia'},'Valencia – Quique e Inma, solo testo in cinque lingue (sezione provvisoria: sabato mattina)'),
+            e('option',{value:'sud'},'Italia Sud – Veronica, Vito e don Francesco (solo relazione, sabato mattina)'),
+            e('option',{value:'francia'},'Francia – Bénigne e Philibert (solo relazione, sabato mattina)'),
+            e('option',{value:'olanda'},'Olanda – Elena e Gerard (12 slide, sabato mattina)'),
+            e('option',{value:'mark'},'Mark e Maria Luisa – ROW (24 slide, sabato mattina)'),
+            e('option',{value:'paul'},'Paul e Tracy – ROW (8 slide, sabato mattina)'),
+            e('option',{value:'internazionaleVenerdi'},'Internazionale – Paul e Tracy Satterfield (8 slide, venerdì sera)'),
+            e('option',{value:'inghilterra'},'Inghilterra e Galles – James e Sharon (9 slide, sabato mattina)'));
+          const btn=e("button",{...(importBusy?{disabled:''}:{}),style:{padding:'12px 18px',background:'#c8a96e',color:'#171725',border:0,borderRadius:'10px',fontWeight:'bold',cursor:'pointer'},onClick:async ev=>{
+            if(importBusy)return;
+            importBusy=true;
+            ev.currentTarget.disabled=true;
+            ev.currentTarget.textContent='Controllo testi e slide su GitHub…';
+            try{await addPublicMeetingShare(chooser.value);}
+            catch(err){importBusy=false;importError=err?.message||String(err);render();}
+          }},"☁️ Collega dal GitHub al Programma");
+          return e('div',{},chooser,btn);
+        })()
+      ),
+      fileInput,
+      isItaliaCentroImport ? e("p",{style:{color:'#ffcf86',marginTop:'10px',fontSize:'13px'}},"Questo ZIP riguarda una relazione archiviata su GitHub: NON usare Conferma importazione. Utilizza sopra «Collega dal GitHub al Programma» per non appesantire Firebase.") : null,
+      importError ? e("div", { style:{marginTop:"12px", padding:"10px 12px", borderRadius:"8px", background:"rgba(255,100,100,0.08)", border:"1px solid rgba(255,100,100,0.25)", color:"#ff9090", fontSize:"13px"} }, "⚠️ "+importError) : null,
+      importItems.length ? e("div", { style:{marginTop:"20px"} },
+        e("div", { style:{fontSize:"14px", color:"#c8a96e", marginBottom:"10px", fontWeight:"600"} }, "Anteprima — "+importItems.length+" condivisioni"),
+        ...previewRows,
+        e("div", { style:{display:"flex", gap:"10px", marginTop:"18px", flexWrap:"wrap"} },
+          !isItaliaCentroImport?confirmBtn:null,
+          e("button", { style:{padding:"10px 18px", borderRadius:"20px", border:"1px solid rgba(200,169,110,0.3)", background:"transparent", color:"#a09080", cursor:"pointer"}, onClick:()=>{ importItems=[]; importError=""; render(); } }, "Annulla")
+        )
+      ) : null
+    );
+  }
+
+  // ── TAB: LIBRERIA ──
+  else if (adminTab === "library") {
+    if (libForm) {
+      bodyContent = renderShareForm(sections, true);
+    } else {
+      const library = appState.library || [];
+      const communities = ["all", ...new Set(library.map(l=>l.community).filter(Boolean))];
+
+      const comFilters = e("div", { style:{display:"flex", gap:"8px", marginBottom:"18px", flexWrap:"wrap"} },
+        ...communities.map(c => e("button", {
+          style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${libFilterCommunity===c?"#c8a96e":"rgba(200,169,110,0.2)"}`, background:libFilterCommunity===c?"rgba(200,169,110,0.15)":"transparent", color:libFilterCommunity===c?"#c8a96e":"#a09080", cursor:"pointer", fontSize:"12px"},
+          onClick:()=>{libFilterCommunity=c;render();}
+        }, c==="all"?"🌍 Tutte":c))
+      );
+
+      const filtered = library.filter(l => libFilterCommunity==="all" || l.community===libFilterCommunity);
+
+      const libRows = filtered.length === 0
+        ? [e("div", { style:{color:"#504040", fontSize:"14px", padding:"20px 0", textAlign:"center"} }, "Nessuna condivisione in libreria. Aggiungine una con il bottone qui sotto.")]
+        : filtered.map((item, idx) => {
+          const usedInShares = (appState.shares||[]).some(s=>s.libId===item.id);
+          return e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"12px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+            e("div", { style:{flex:"1"} },
+              e("div", { style:{display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"4px"} },
+                e("strong", { style:{color:"#e8dcc8", fontSize:"15px"} }, item.translations?.it?.title||"—"),
+                item.coupleName ? e("span", { style:{fontSize:"12px", color:"#c8a96e", background:"rgba(200,169,110,0.1)", padding:"2px 8px", borderRadius:"10px"} }, "👫 "+item.coupleName) : null,
+              ),
+              e("div", { style:{fontSize:"12px", color:"#706050", marginTop:"2px"} },
+                (item.community ? "🌍 "+item.community : "") +
+                (item.day ? " · 📅 "+item.day : "") +
+                (item.time ? " · 🕐 "+item.time : "") +
+                " · " + Object.keys(LANG_FLAGS).filter(l=>item.translations?.[l]?.title).map(l=>LANG_FLAGS[l]).join(" ")
+              )
+            ),
+            e("div", { style:{display:"flex", gap:"6px", alignItems:"center", flexWrap:"wrap"} },
+              e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>openLibEditForm(item) }, "✏️"),
+              e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteLibItem(item.id) }, "🗑️"),
+              e("button", {
+                style:{padding:"5px 12px", borderRadius:"16px", border:"1px solid rgba(100,200,100,0.4)", background:"rgba(100,200,100,0.08)", color:"#90d090", cursor:"pointer", fontSize:"12px", fontWeight:"600"},
+                onClick:()=>useFromLibrary(item)
+              }, "📋 Usa nel programma")
+            )
+          );
+        });
+
+      bodyContent = e("div", { style:{maxWidth:"820px"} },
+        e("div", { style:{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"16px", flexWrap:"wrap", gap:"10px"} },
+          e("div", {},
+            e("h3", { style:{fontSize:"20px", color:"#c8a96e"} }, "📦 Libreria condivisioni"),
+            e("p", { style:{fontSize:"13px", color:"#a09080", marginTop:"4px"} }, `${library.length} condivisioni archiviate — invisibili alle coppie`)
+          ),
+          e("button", { style:{padding:"8px 20px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer", fontSize:"14px"}, onClick:openNewLibForm }, "➕ Aggiungi alla libreria")
+        ),
+        comFilters,
+        ...libRows
+      );
+    }
+  }
+
+  // ── TAB: SEZIONI ──
+  else if (adminTab === "sections") {
+    const secRows = sections.map(sec =>
+      e("div", { style:{display:"flex", alignItems:"center", gap:"12px", padding:"10px 14px", borderRadius:"10px", border:"1px solid rgba(200,169,110,0.15)", marginBottom:"8px", background:"rgba(255,255,255,0.02)"} },
+        e("span", { style:{fontSize:"22px"} }, sec.icon),
+        e("span", { style:{flex:"1", color:"#e8dcc8"} }, sec.label),
+        e("span", { style:{fontSize:"12px", color:"#706050"} }, (appState.shares||[]).filter(s=>s.sectionId===sec.id).length+" condivisioni"),
+        e("button", { style:{background:"transparent", border:"none", cursor:"pointer", fontSize:"16px", color:"#a09080"}, onClick:()=>deleteSection(sec.id) }, "🗑️")
+      )
+    );
+    const iconInput = e("input", { placeholder:"Emoji", style:{width:"70px", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    iconInput.value = newSecIcon;
+    iconInput.addEventListener("input", ev=>{ newSecIcon=ev.target.value; });
+    const labelInput = e("input", { placeholder:"Nome sezione", style:{flex:"1", padding:"10px 14px", borderRadius:"8px", border:"1px solid rgba(200,169,110,0.25)", background:"rgba(255,255,255,0.04)", color:"#e8dcc8", fontSize:"15px"} });
+    labelInput.value = newSecLabel;
+    labelInput.addEventListener("input", ev=>{ newSecLabel=ev.target.value; });
+    labelInput.addEventListener("keydown", ev=>ev.key==="Enter"&&addSection());
+    bodyContent = e("div", { style:{maxWidth:"560px"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"6px"} }, "🗂️ Sezioni del weekend"),
+      e("p", { style:{color:"#a09080", fontSize:"14px", marginBottom:"20px"} }, "Aggiungi, rinomina o elimina le sezioni."),
+      ...secRows,
+      e("div", { style:{marginTop:"24px", padding:"16px", borderRadius:"12px", border:"1px solid rgba(200,169,110,0.2)", background:"rgba(200,169,110,0.04)"} },
+        e("div", { style:{fontSize:"14px", color:"#c8a96e", marginBottom:"12px"} }, "➕ Aggiungi nuova sezione"),
+        e("div", { style:{display:"flex", gap:"10px", flexWrap:"wrap"} },
+          iconInput, labelInput,
+          e("button", { style:{padding:"10px 20px", borderRadius:"20px", border:"none", background:"linear-gradient(135deg, #c8a96e, #e8c87a)", color:"#0d0d1a", fontWeight:"700", cursor:"pointer"}, onClick:addSection }, "Aggiungi")
+        )
+      )
+    );
+  }
+
+  // ── TAB: QR ──
+  else if (adminTab === "qr") {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(coupleUrl)}&bgcolor=0d0d1a&color=c8a96e&margin=12`;
+    bodyContent = e("div", { style:{textAlign:"center", padding:"20px 0"} },
+      e("h3", { style:{fontSize:"20px", color:"#c8a96e", marginBottom:"12px"} }, "📲 QR Code per le coppie"),
+      e("p", { style:{color:"#a09080", lineHeight:"1.7", marginBottom:"28px", fontSize:"15px"} }, "Le coppie scansionano questo QR con il cellulare."),
+      e("div", { style:{display:"flex", justifyContent:"center", marginBottom:"16px"} },
+        e("img", { src:qrUrl, style:{width:"200px", height:"200px", borderRadius:"14px", border:"2px solid rgba(200,169,110,0.35)"} })
+      ),
+      e("p", { style:{fontSize:"12px", color:"#706050", wordBreak:"break-all", marginBottom:"20px"} }, coupleUrl),
+      e("div", { style:{display:"inline-block", padding:"12px 20px", borderRadius:"12px", background:"rgba(200,169,110,0.08)", border:"1px solid rgba(200,169,110,0.2)", fontSize:"14px", color:"#c8a96e", maxWidth:"460px"} },
+        "💡 Proietta questo schermo oppure stampa il QR."
+      )
+    );
+  }
+
+  return e("div", { style:{minHeight:"100vh", display:"flex", flexDirection:"column"} },
+    header,
+    e("div", { style:{flex:"1", padding:"20px", maxWidth:"820px", width:"100%", margin:"0 auto"} }, adminTab === "list" ? reading.panel() : null, bodyContent||e("div",{}))
+  );
+}
+
+// Spostamento manuale e verificato. Non modifica la relazione attiva.
+const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
+const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
+const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
+const PUBLIC_MEETING_PRESETS={
+  introduzioneOlandaAnnalisa:{
+    filename:'annalisa-introduzione-olanda-gerard-elena-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-olanda-gerard-elena-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Olanda – Annalisa',
+    afterBlocks:[]
+  },
+  introduzioneInghilterraGallesAnnalisa:{
+    filename:'annalisa-introduzione-inghilterra-galles-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-inghilterra-galles-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Inghilterra e Galles – Annalisa',
+    afterBlocks:[]
+  },
+  introduzioneSudMarcelo:{
+    filename:'marcelo-introduzione-italia-sud-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-marcelo-introduzione-italia-sud-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Italia Sud – Marcelo',
+    afterBlocks:[]
+  },
+  introduzioneCentroAnnalisa:{
+    filename:'annalisa-introduzione-italia-centro-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-italia-centro-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Italia Centro – Annalisa',
+    afterBlocks:[]
+  },
+  introduzioneNordEstAnnalisa:{
+    filename:'annalisa-introduzione-italia-nord-est-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-italia-nord-est-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Italia Nord-Est – Annalisa',
+    afterBlocks:[]
+  },
+  introduzioneNordOvestMarcelo:{
+    filename:'marcelo-introduzione-italia-nord-ovest-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-marcelo-introduzione-italia-nord-ovest-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Italia Nord-Ovest – Marcelo',
+    afterBlocks:[]
+  },
+  presentazioneRegionItaliaMarcelo:{
+    filename:'marcelo-presentazione-region-italia-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-marcelo-presentazione-region-italia-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione REGION ITALIA – Marcelo',
+    afterBlocks:[]
+  },
+  introduzioneValenciaAnnalisa:{
+    filename:'annalisa-introduzione-valencia-ima-kike-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-valencia-ima-kike-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Introduzione della Comunità di Valencia – Annalisa',
+    afterBlocks:[]
+  },
+  introduzioneMadridMarcelo:{
+    filename:'marcelo-presentazione-madrid-david-andrea-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-marcelo-presentazione-madrid-david-andrea-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione dei coordinatori di Madrid – David e Andrea – Marcelo',
+    afterBlocks:[]
+  },
+  introduzioneLilianaAnnalisa:{
+    filename:'annalisa-introduzione-liliana-portogallo-sabato-mattina-2026.json',
+    archive:null,
+    id:'github-annalisa-introduzione-liliana-portogallo-sabato-mattina-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Introduzione di Liliana Verde – Comunità del Portogallo – Annalisa',
+    afterBlocks:[]
+  },
+  annuncioPortogalloAnnalisa:{
+    filename:'annalisa-nascita-comunita-portogallo-sabato-sera-2026.json',
+    archive:null,
+    id:'github-annalisa-nascita-comunita-portogallo-sabato-sera-2026',
+    sectionId:'sab-sera',
+    expectedTitle:'Nascita ufficiale della Comunità Retrouvaille Portogallo – Annalisa',
+    afterBlocks:[]
+  },
+  aperturaSabatoMarcelo:{
+    filename:'marcelo-apertura-sabato-mattina-comunita-2026.json',
+    archive:null,
+    id:'github-marcelo-apertura-sabato-mattina-comunita-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Buongiorno – Inizio lavori sabato mattina – Marcelo',
+    afterBlocks:[]
+  },
+  chiusuraVenerdiMarcelo:{
+    filename:'marcelo-chiusura-venerdi-programma-sabato-2026.json',
+    archive:null,
+    id:'github-marcelo-chiusura-venerdi-programma-sabato-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Chiusura del venerdì sera – Programma di sabato e benedizione – Marcelo',
+    afterBlocks:[]
+  },
+  presentazioneMarkMariaLuisaMarcelo:{
+    filename:'marcelo-presentazione-mark-maria-luisa-venerdi-2026.json',
+    archive:null,
+    id:'github-marcelo-presentazione-mark-maria-luisa-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Presentazione di Mark e Maria Luisa – Annalisa',
+    afterBlocks:[]
+  },
+  presentazionePaulTracyMarcelo:{
+    filename:'marcelo-presentazione-paul-tracy-venerdi-2026.json',
+    archive:null,
+    id:'github-marcelo-presentazione-paul-tracy-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Presentazione di Paul e Tracy Satterfield – Marcelo',
+    afterBlocks:[]
+  },
+  ringraziamentoTeamFranciaAnnalisa:{
+    filename:'annalisa-ringraziamento-francia-venerdi-2026.json',
+    archive:null,
+    id:'github-annalisa-ringraziamento-francia-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Ringraziamento ai coordinatori francesi – Annalisa',
+    afterBlocks:[]
+  },
+  colombaAnnalisa:{
+    filename:'annalisa-colomba-spirito-santo-venerdi-2026.json',
+    archive:null,
+    id:'github-annalisa-colomba-spirito-santo-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Il simbolo della colomba – Affidamento allo Spirito Santo',
+    afterBlocks:[]
+  },
+  preghieraSabato:{
+    filename:'preghiera-sabato-ti-do-tutto-signore-2026.json',
+    archive:null,
+    id:'github-preghiera-sabato-ti-do-tutto-signore-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Preghiera – Ti do tutto, Signore',
+    afterBlocks:[]
+  },
+  benvenutoAnnalisa:{
+    filename:'benvenuto-annalisa-venerdi-2026.json',
+    archive:null,
+    id:'github-benvenuto-annalisa-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Benvenuto di Annalisa – Il seme della speranza',
+    afterBlocks:[]
+  },
+  donFrancesco:{
+    filename:'don-francesco-biografia-relazione-2026.json',
+    archive:null,
+    id:'github-don-francesco-biografia-relazione-2026',
+    sectionId:'sab-pom',
+    expectedTitle:'Don Francesco De Vita – Biografia e relazione',
+    afterBlocks:[]
+  },
+  introduzioneFrancesco:{
+    filename:'introduzione-don-francesco-annalisa-2026.json',
+    archive:null,
+    id:'github-introduzione-don-francesco-annalisa-2026',
+    sectionId:'sab-pom',
+    expectedTitle:'Introduzione a don Francesco De Vita – Annalisa',
+    afterBlocks:[]
+  },
+  nordovest:{
+    filename:'italia-nord-ovest-samantha-cristian.json',
+    archive:'NORD_OVEST_MEETING_slides.zip',
+    id:'github-italia-nord-ovest-samantha-cristian',
+    sectionId:'sab-mat',
+    expectedTitle:'Relazione Comunità Italia Nord-Ovest',
+    afterBlocks:[-1,3,9,13,18,19,24,26,27,28,29,30,39]
+  },
+  centro:{
+    filename:'italia-centro-roby-silvia.json',
+    archive:'ITALIA_CENTRO_MEETING_slides_5_LINGUE_CORRETTE.zip',
+    id:'github-italia-centro-roby-silvia',
+    sectionId:'sab-mat',
+    expectedTitle:'Relazione Comunità Italia Centro',
+    afterBlocks:[-1,1,2,3,3,4,5,6,7,7,7,11,17,17]
+  },
+  madrid:{
+    filename:'madrid-europa-2026.json',
+    archive:'MADRID_MEETING_slides.zip',
+    id:'github-madrid-europa-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Retrouvaille Madrid',
+    afterBlocks:[-1,0,1,4,11,17,21,27,35,39,43,52,53,55]
+  },
+  nordest:{
+    filename:'italia-nord-est-2026.json',
+    archive:null,
+    id:'github-italia-nord-est-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'COMUNITA’ RETROUVAILLE ITALIA NORD EST – 5040',
+    afterBlocks:[]
+  },
+  valencia:{
+    filename:'valencia-quique-inma-2026.json',
+    archive:null,
+    id:'github-valencia-quique-inma-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione della Comunità Retrouvaille Valencia',
+    afterBlocks:[]
+  },
+  francia:{
+    filename:'francia-benigne-philibert-2026.json',
+    archive:null,
+    id:'github-francia-benigne-philibert-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Retrouvaille Francia – Bénigne e Philibert',
+    afterBlocks:[]
+  },
+  sud:{
+    filename:'italia-sud-veronica-vito-2026.json',
+    archive:null,
+    id:'github-italia-sud-veronica-vito-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Comunità Italia Sud – Veronica, Vito e don Francesco',
+    afterBlocks:[]
+  },
+  olanda:{
+    filename:'olanda-elena-gerard-2026.json',
+    archive:'OLANDA_MEETING_slides.zip',
+    id:'github-olanda-elena-gerard-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Retrouvaille Nederland en Vlaanderen – Novembre 2026 – Parigi, Francia',
+    afterBlocks:[-1,0,1,2,3,4,5,6,7,8,9,10]
+  },
+  mark:{
+    filename:'mark-maria-luisa-2026.json',
+    archive:'MARK_MARIA_LUISA_MEETING_slides.zip',
+    id:'github-mark-maria-luisa-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Mark e Maria Luisa – Relazione ROW – Meeting Europeo Parigi 2026',
+    afterBlocks:[-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
+  },
+  paul:{
+    filename:'paul-tracy-2026.json',
+    archive:'PAUL_TRACY_MEETING_slides.zip',
+    id:'github-paul-tracy-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Paul e Tracy – Relazione ROW – Meeting Europeo Parigi 2026',
+    afterBlocks:[-1,0,1,2,3,4,5,6]
+  },
+  internazionaleVenerdi:{
+    filename:'paul-tracy-internazionale-venerdi-2026.json',
+    archive:'VENERDI_INTERNAZIONALE_MEETING_slides.zip',
+    id:'github-internazionale-paul-tracy-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Paul e Tracy Satterfield – Consiglio Internazionale – Venerdì sera – Parigi 2026',
+    afterBlocks:[-1,0,1,2,3,4,5,6]
+  },
+  inghilterra:{
+    filename:'inghilterra-james-sharon-2026.json',
+    archive:'INGHILTERRA_MEETING_slides.zip',
+    id:'github-england-wales-james-sharon-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Inghilterra e Galles – James e Sharon Westby',
+    afterBlocks:[-1,0,1,2,3,4,5,6,7]
+  }
+};
+async function replaceFridayRowShare(target, bundle) {
+  const shareId='s1793894800504-0';
+  const archive='ED_ROW_Mark_Maria_Luisa_Venerdi_Definitivo_slides.zip';
+  const title='E&D ROW – Mark e Maria Luisa Da Rodda';
+  const languages=['it','en','fr','es','pt'];
+  if (!adminAuth || bundle.replaceShareId!==shareId || bundle.name!==archive ||
+      target.sectionId!=='ven-sera' || target.translations.it.title!==title ||
+      bundle.batches.length!==18 ||
+      !bundle.batches.every((slide,i)=>slide.number===i+1 && slide.afterBlock===i-1) ||
+      !languages.every(lang=>target.translations[lang].body.split('\n\n').length===18)) {
+    throw Error('Il pacchetto non corrisponde alla scheda E&D ROW del venerdì.');
+  }
+  const positions=bundle.batches.map(({number,afterBlock})=>({number,afterBlock}));
+  const prepared=preparePublicSlideReading(target.translations,positions);
+  await checkSlideArchive(archive,positions.map(p=>p.number));
+  await runTransaction(firestore, async tx=>{
+    const ref=doc(firestore,'state','main');
+    const snap=await tx.get(ref);
+    if (!snap.exists()) throw Error('Programma non disponibile.');
+    const state=snap.data();
+    const shares=state.shares||[];
+    const current=shares.find(share=>share.id===shareId);
+    const currentTitle=current?.translations?.it?.title;
+    if (shares.filter(share=>share.id===shareId).length!==1 ||
+        current?.sectionId!=='ven-sera' ||
+        (currentTitle!=='E&D ROW — Mark e Maria Luisa Da Rodda (PROVA 5 slide)' &&
+         (currentTitle!==title || current.slideArchive!==archive))) {
+      throw Error('La scheda da aggiornare è cambiata. Controlla il Programma.');
+    }
+    const updated={...current,coupleName:target.coupleName,translations:target.translations,
+      slideArchive:archive,inlineSlides:prepared.inlineSlides,readingBlocks:prepared.readingBlocks,
+      readingSegmentationVersion:2};
+    const patch={shares:shares.map(share=>share.id===shareId?updated:share)};
+    if (state.readingFollow?.shareId===shareId) {
+      patch.readingFollow={...state.readingFollow,session:crypto.randomUUID(),
+        blocks:prepared.readingBlocks,index:0,revision:(state.readingFollow.revision||0)+1};
+    }
+    const total=new TextEncoder().encode(JSON.stringify({...state,...patch})).length;
+    if (total>850000) throw Error('Spazio insufficiente nel programma.');
+    tx.update(ref,patch);
+  });
+}
+
+async function addPublicMeetingShare(key){
+  if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  if(key==='markVenerdi'){
+    const source=await loadPublicText('mark-maria-luisa-venerdi-2026.json');
+    await replaceFridayRowShare(source,{
+      replaceShareId:'s1793894800504-0',
+      name:'ED_ROW_Mark_Maria_Luisa_Venerdi_Definitivo_slides.zip',
+      batches:Array.from({length:18},(_,index)=>({number:index+1,afterBlock:index-1}))
+    });
+    importItems=[];importZip=null;importError='';importBusy=false;adminTab='list';render();
+    alert('Scheda di Mark e Maria Luisa del venerdì sera aggiornata: 18 slide e testi in cinque lingue.');
+    return;
+  }
+  const spec=PUBLIC_MEETING_PRESETS[key];
+  if(!spec)throw Error('Relazione non riconosciuta.');
+  const source=await loadPublicText(spec.filename);
+  const sourceTitles=['it','es','fr','en','pt'].map(l=>source.translations?.[l]?.title||'');
+  if(!sourceTitles.includes(spec.expectedTitle))
+    throw Error('Controllo titolo: atteso «'+spec.expectedTitle+'», ricevuto «'+(source.translations?.it?.title||'vuoto')+'». Nessun dato modificato.');
+  const original=source.translations;
+  const languages=['it','en','fr','es','pt'];
+  if(!languages.every(l=>original?.[l]?.body?.length>100))throw Error('Traduzioni GitHub incomplete.');
+  const positions=spec.afterBlocks.map((afterBlock,i)=>({number:i+1,afterBlock}));
+  if(spec.archive&&positions.length)await checkSlideArchive(spec.archive,positions.map(p=>p.number));
+  const prepared=positions.length
+    ? preparePublicSlideReading(original,positions)
+    : {readingBlocks:shortenLongReadingBlocks(suggestBlocks(original).blocks,original,105),inlineSlides:[]};
+  if(prepared.inlineSlides.length!==positions.length||!prepared.readingBlocks.length)
+    throw Error('Passaggi e slide non sincronizzati: nessun dato modificato.');
+  const meta=compactPublicShare({
+    id:spec.id,sectionId:spec.sectionId,coupleName:source.coupleName,day:source.day,
+    time:source.time||'',speakerLanguage:source.speakerLanguage||'it',imageUrl:'',
+    translations:Object.fromEntries(languages.map(l=>[l,{title:original[l].title,body:''}])),
+    publicTextFile:spec.filename,publicSlidePositions:positions,
+    slideArchive:spec.archive,inlineSlides:[],readingBlocks:null,readingSegmentationVersion:2
+  });
+  await runTransaction(firestore,async tx=>{
+    const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
+    if(!snap.exists())throw Error('Firebase non disponibile.');
+    const state=snap.data();
+    const duplicate=(state.shares||[]).some(share=>share.id===spec.id||
+      share.publicTextFile===spec.filename||share.translations?.it?.title===spec.expectedTitle);
+    if(duplicate)throw Error('La relazione è già nel Programma: nessuna copia aggiunta.');
+    const shares=[...(state.shares||[]),meta];
+    const bytes=new TextEncoder().encode(JSON.stringify({...state,shares})).length;
+    if(bytes>850000)throw Error('Spazio Firebase insufficiente: nessun salvataggio.');
+    tx.update(ref,{shares});
+  });
+  publicTextCache.set(spec.filename,source);
+  importItems=[];importZip=null;importError='';importBusy=false;adminTab='list';render();
+  alert('Collegamento riuscito: testo in cinque lingue su GitHub'+(positions.length?' e '+positions.length+' slide':' senza slide associate')+'. Sezione: '+(spec.sectionId==='sab-pom'?'sabato pomeriggio':spec.sectionId==='ven-sera'?'venerdì sera':'sabato mattina')+'. Verifica dal Programma.');
+}
+async function addItaliaCentroFromGitHub(){
+  if(!adminAuth)throw Error('Accedi come amministratore.');
+  const source=await loadPublicText(ITALIA_CENTRO_FILE);
+  const original=source.translations;
+  if(!['it','en','fr','es','pt'].every(l=>original?.[l]?.body?.length>100))throw Error('Testi GitHub incompleti.');
+  await checkSlideArchive(ITALIA_CENTRO_SLIDES,ITALIA_CENTRO_POSITIONS.map(p=>p.number));
+  // Validate all 5 languages and slide positions BEFORE any database write.
+  const prepared=preparePublicSlideReading(original,ITALIA_CENTRO_POSITIONS);
+  if(!prepared.readingBlocks.length||prepared.inlineSlides.length!==14)throw Error('Preparazione dei passaggi incompleta.');
+  const meta=compactPublicShare({
+    id:'github-italia-centro-roby-silvia',
+    sectionId:'sab-mat',
+    coupleName:'Roby e Silvia – Italia Centro',
+    day:'Sabato 28 novembre 2026',
+    time:'',
+    speakerLanguage:'it',
+    imageUrl:'',
+    translations:Object.fromEntries(['it','en','fr','es','pt'].map(l=>[l,{title:original[l].title,body:''}])),
+    publicTextFile:ITALIA_CENTRO_FILE,
+    publicSlidePositions:ITALIA_CENTRO_POSITIONS,
+    slideArchive:ITALIA_CENTRO_SLIDES,
+    readingBlocks:null,
+    inlineSlides:[],
+    readingSegmentationVersion:2
+  });
+  await runTransaction(firestore,async tx=>{
+    const stateRef=doc(firestore,'state','main');
+    const snap=await tx.get(stateRef);
+    if(!snap.exists())throw Error('Database non disponibile.');
+    const state=snap.data();
+    const duplicates=(state.shares||[]).filter(s=>s.publicTextFile===ITALIA_CENTRO_FILE||s.id===meta.id||s.translations?.it?.title===original.it.title);
+    if(duplicates.length)throw Error('Italia Centro risulta già presente nel Programma: nessuna copia aggiunta.');
+    const shares=[...(state.shares||[]),meta];
+    const total=new TextEncoder().encode(JSON.stringify({...state,shares})).length;
+    if(total>850000)throw Error('Spazio Firebase insufficiente: nessun dato modificato.');
+    tx.update(stateRef,{shares});
+  });
+  publicTextCache.set(ITALIA_CENTRO_FILE,source);
+  importItems=[];importZip=null;importError='';adminTab='list';render();
+  alert('Italia Centro collegata: testi e 70 immagini su GitHub. Firebase conserva soltanto metadati e comandi. Ora verifica la relazione dal Programma.');
+}
+async function archiveRegionItaliaShare(id){
+  if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  if(appState.activeShareId===id)throw Error('Disattiva prima questa condivisione.');
+  const source=await loadPublicText(REGION_ITALIA_FILE);
+  const original=(appState.shares||[]).find(s=>s.id===id);
+  if(!original||!publicTextMatches(original,source))
+    throw Error('Il documento GitHub differisce dai testi presenti in Firebase: nessun dato modificato.');
+  await runTransaction(firestore,async tx=>{
+    const ref=doc(firestore,'state','main');
+    const snap=await tx.get(ref);
+    if(!snap.exists())throw Error('Firebase non disponibile.');
+    const state=snap.data();
+    if(state.activeShareId===id)throw Error('Relazione attiva: spostamento bloccato.');
+    const current=(state.shares||[]).find(s=>s.id===id);
+    if(!current||!publicTextMatches(current,source))
+      throw Error('I testi sono cambiati. Nessuna modifica eseguita.');
+    const archived=compactPublicShare({...current,publicTextFile:REGION_ITALIA_FILE});
+    tx.update(ref,{shares:state.shares.map(s=>s.id===id?archived:s)});
+  });
+  publicTextCache.set(REGION_ITALIA_FILE,source);
+  alert('Archiviazione riuscita. Le cinque lingue si trovano su GitHub; Firebase conserva i comandi e i metadati. Verifica la percentuale di spazio in alto.');
+}
+
+// ═══ ACTIONS ═══
+async function activateShare(id) {
+  const newId=appState.activeShareId===id?null:id;
+  let shares=appState.shares||[];
+  if(newId){
+    const candidate=shares.find(s=>s.id===newId);
+    if(candidate?.publicTextFile){
+      const content=await loadPublicText(candidate.publicTextFile);
+      const hydrated=hydratePublicShare(candidate,content,translations=>{
+        const aligned=alignedReadingBlocks(translations)||suggestBlocks(translations).blocks;
+        return shortenLongReadingBlocks(aligned,translations,105);
+      });
+      if(candidate.publicSlidePositions?.length){
+        const prepared=preparePublicSlideReading(hydrated.translations,candidate.publicSlidePositions);
+        hydrated.readingBlocks=prepared.readingBlocks;
+        hydrated.inlineSlides=prepared.inlineSlides;
+        hydrated.readingSegmentationVersion=2;
+      }else{
+        // No slides: retain the existing short passage behavior.
+        hydrated.readingBlocks=shortenLongReadingBlocks(hydrated.readingBlocks,hydrated.translations,105);
+      }
+      if(!hydrated.readingBlocks?.length)
+        throw Error('Passaggi della relazione pubblica non disponibili: non attivata.');
+      shares=shares.map(s=>s.id===newId?hydrated:s);
+    }
+  }
+  await saveState({...appState,shares,activeShareId:newId});
+}
+async function toggleSelected(id) {
+  const current = appState.selectedShareIds || [];
+  const newIds = current.includes(id) ? current.filter(x=>x!==id) : [...current, id];
+  await saveState({ ...appState, selectedShareIds: newIds });
+}
+async function deleteShare(id) {
+  await saveState({
+    ...appState,
+    shares:(appState.shares||[]).filter(s=>s.id!==id),
+    activeShareId:appState.activeShareId===id?null:appState.activeShareId,
+    selectedShareIds:(appState.selectedShareIds||[]).filter(x=>x!==id)
+  });
+}
+
+const MEETING_SECTION_DATES={
+  'ven-sera':'Venerdì 27 novembre 2026',
+  'sab-mat':'Sabato 28 novembre 2026',
+  'sab-pom':'Sabato 28 novembre 2026',
+  'sab-sera':'Sabato 28 novembre 2026',
+  'dom-mat':'Domenica 29 novembre 2026'
+};
+// Sposta solo la relazione selezionata, con le sue slide e le cinque lingue.
+// La transazione non tocca l'attivazione, il microfono o il punto di lettura.
+async function relocateShareToSection(shareId,fromSectionId,toSectionId){
+  if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  await runTransaction(firestore,async tx=>{
+    const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
+    if(!snap.exists())throw Error('Programma non disponibile.');
+    const state=snap.data(),sections=state.sections||[],all=state.shares||[];
+    if(!sections.some(s=>s.id===toSectionId))throw Error('La sezione di destinazione non è più disponibile.');
+    const original=all.find(s=>s.id===shareId);
+    if(!original)throw Error('Condivisione non trovata: nessun dato modificato.');
+    if(original.sectionId!==fromSectionId)throw Error('La condivisione è già stata spostata da un’altra postazione. Riapri il comando.');
+    if(fromSectionId===toSectionId)throw Error('Scegli una sezione diversa da quella attuale.');
+    const oldDay=String(original.day||'');
+    const standardMeetingDay=!oldDay.trim()||/^\s*(?:venerdì|venerdi|sabato|domenica)\s+(?:27|28|29)\s+novembre\s+2026\s*$/i.test(oldDay);
+    const day=standardMeetingDay&&MEETING_SECTION_DATES[toSectionId] ? MEETING_SECTION_DATES[toSectionId] : original.day;
+    const moved={...original,sectionId:toSectionId,...(day!==original.day?{day}:{})};
+    const shares=all.filter(s=>s.id!==shareId);
+    // Chi si sposta viene aggiunto alla fine della sezione scelta.
+    const lastDestinationIndex=shares.reduce((last,s,i)=>s.sectionId===toSectionId?i:last,-1);
+    shares.splice(lastDestinationIndex<0?shares.length:lastDestinationIndex+1,0,moved);
+    if(new TextEncoder().encode(JSON.stringify({...state,shares})).length>975000)
+      throw Error('Documento del Programma troppo grande: nessun cambiamento eseguito.');
+    tx.update(ref,{shares});
+  });
+}
+function openMoveSectionPicker(share){
+  if(!adminAuth){alert('Accedi come amministratore.');return;}
+  const sections=[...(appState.sections||[])].sort((a,b)=>(a.order||0)-(b.order||0));
+  const choices=sections.filter(s=>s.id!==share.sectionId);
+  if(!choices.length){alert('Non ci sono altre sezioni disponibili.');return;}
+  let destination=choices[0].id;
+  const overlay=e('div',{style:{position:'fixed',inset:'0',zIndex:1200,background:'rgba(0,0,0,.87)',padding:'20px',overflowY:'auto'}});
+  const card=e('div',{style:{maxWidth:'490px',margin:'25px auto',padding:'24px',background:'#171725',color:'#e8dcc8',border:'1px solid #c8a96e',borderRadius:'16px'}});
+  const feedback=e('p',{role:'status',style:{color:'#ffbb94',fontSize:'13px',marginTop:'14px'}});
+  const sel=e('select',{style:{display:'block',width:'100%',padding:'12px',background:'#232339',color:'#e8dcc8',border:'1px solid #c8a96e',borderRadius:'9px',margin:'12px 0 16px'},onChange:ev=>{destination=ev.target.value;}},...choices.map((sec,i)=>e('option',{value:sec.id,...(i===0?{selected:''}:{})},sec.icon+' '+sec.label)));
+  const close=()=>overlay.remove();
+  const btnStyle={padding:'11px 16px',borderRadius:'10px',cursor:'pointer',fontWeight:'600'};
+  const save=e('button',{style:{...btnStyle,background:'#c8a96e',color:'#161625',border:'none'},onClick:async()=>{
+    save.disabled=true;feedback.textContent='Spostamento in corso…';
+    try{
+      await relocateShareToSection(share.id,share.sectionId,destination);
+      const sec=sections.find(s=>s.id===destination);
+      close();filterSection=destination;render();
+      alert('Condivisione spostata in «'+(sec?.label||destination)+'». Testi, cinque lingue e slide conservati.');
+    }catch(err){feedback.textContent='Non spostata: '+(err?.message||String(err));save.disabled=false;}
+  }},'Conferma spostamento');
+  const cancel=e('button',{style:{...btnStyle,background:'transparent',color:'#e8dcc8',border:'1px solid #777'},onClick:close},'Annulla');
+  card.append(
+    e('h3',{style:{fontSize:'19px',color:'#e8c87a',marginBottom:'12px'}},'Sposta in un’altra sezione'),
+    e('p',{style:{fontWeight:'600',marginBottom:'10px'}},share.translations?.it?.title||share.coupleName||'Condivisione'),
+    e('p',{style:{fontSize:'13px',color:'#a09080'}},'Le relazioni nelle cinque lingue, tutte le slide, l’orario e lo stato della lettura restano associati. La data del Programma si adegua al giorno della sezione scelta.'),
+    sel,e('div',{style:{display:'flex',gap:'10px',flexWrap:'wrap'}},save,cancel),feedback
+  );
+  overlay.append(card);
+  document.body.append(overlay);
+}
+
+async function moveShare(sectionId, idx, dir) {
+  let shares = [...(appState.shares||[])];
+  const secShares = shares.filter(s=>s.sectionId===sectionId);
+  const otherShares = shares.filter(s=>s.sectionId!==sectionId);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= secShares.length) return;
+  [secShares[idx], secShares[newIdx]] = [secShares[newIdx], secShares[idx]];
+  await saveState({ ...appState, shares: [...otherShares, ...secShares] });
+}
+function openNewForm(sectionId) {
+  adminForm = {
+    sectionId: sectionId || (appState.sections||[])[0]?.id || "ven-sera",
+    imageUrl: "",
+    coupleName: "",
+    day: "",
+    time: "",
+    speakerLanguage: "",
+    translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
+  };
+  adminEditId = null;
+  adminTab = "add";
+  render();
+}
+function openPublicMetaForm(share) {
+  publicMetaDraft={id:share.id,title:share.translations?.it?.title||share.coupleName||"Condivisione",speakerLanguage:share.speakerLanguage||""};
+  adminTab="publicmeta";
+  render();
+}
+function openEditForm(share) {
+  adminForm = {
+    sectionId: share.sectionId || (appState.sections||[])[0]?.id || "",
+    imageUrl: share.imageUrl||"",
+    coupleName: share.coupleName||"",
+    day: share.day||"",
+    time: share.time||"",
+    speakerLanguage: share.speakerLanguage||"",
+    translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...share.translations }
+  };
+  adminEditId = share.id;
+  adminTab = "add";
+  render();
+}
+async function saveForm() {
+  if (!adminForm) return;
+  let shares = [...(appState.shares||[])];
+  if (adminEditId) {
+    shares = shares.map(s => s.id===adminEditId ? {...s,...adminForm,id:adminEditId} : s);
+  } else {
+    shares.push({ ...adminForm, id:"s"+Date.now() });
+  }
+  await saveState({ ...appState, shares });
+  adminTab="list"; adminForm=null; adminEditId=null; render();
+}
+
+// Library actions
+function openNewLibForm() {
+  libForm = {
+    coupleName: "",
+    community: "",
+    day: "",
+    time: "",
+    imageUrl: "",
+    speakerLanguage: "",
+    translations: Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}]))
+  };
+  libEditId = null;
+  render();
+}
+function openLibEditForm(item) {
+  libForm = {
+    coupleName: item.coupleName||"",
+    community: item.community||"",
+    day: item.day||"",
+    time: item.time||"",
+    imageUrl: item.imageUrl||"",
+    speakerLanguage: item.speakerLanguage||"",
+    translations: { ...Object.fromEntries(Object.keys(LANG_NAMES).map(l=>[l,{title:"",body:""}])), ...item.translations }
+  };
+  libEditId = item.id;
+  render();
+}
+async function saveLibForm() {
+  if (!libForm) return;
+  let library = [...(appState.library||[])];
+  if (libEditId) {
+    library = library.map(l => l.id===libEditId ? {...l,...libForm,id:libEditId} : l);
+  } else {
+    library.push({ ...libForm, id:"lib"+Date.now() });
+  }
+  await saveState({ ...appState, library });
+  libForm=null; libEditId=null; render();
+}
+async function deleteLibItem(id) {
+  await saveState({ ...appState, library:(appState.library||[]).filter(l=>l.id!==id) });
+}
+async function useFromLibrary(item) {
+  // Open a section picker
+  const sections = [...(appState.sections||[])].sort((a,b)=>a.order-b.order);
+  const sectionId = sections[0]?.id;
+  // Add to shares with a copy from library
+  const newShare = {
+    ...item,
+    id: "s"+Date.now(),
+    libId: item.id,
+    sectionId: sectionId,
+  };
+  let shares = [...(appState.shares||[]), newShare];
+  await saveState({ ...appState, shares });
+  // Go to list tab so user can see it and move to right section
+  adminTab = "list";
+  render();
+  alert(`"${item.translations?.it?.title||item.coupleName||"Condivisione"}" aggiunta a "${sections[0]?.label||"Venerdì sera"}".\nUsa la matita ✏️ per cambiarle sezione se necessario.`);
+}
+
+async function addSection() {
+  if (!newSecLabel.trim()) return;
+  const newSec = { id:"sec-"+Date.now(), label:newSecLabel.trim(), icon:newSecIcon||"📌", order:(appState.sections?.length||0)+1 };
+  await saveState({ ...appState, sections:[...(appState.sections||[]), newSec] });
+  newSecLabel=""; newSecIcon="✨"; render();
+}
+async function deleteSection(id) {
+  await saveState({ ...appState, sections:(appState.sections||[]).filter(s=>s.id!==id) });
+}
+
+// Misuratore in sola lettura: non cambia Firebase, microfono o condivisioni.
+let migrationBusy=false;
+let migrationAutoAttempted=false;
+let migrationStatus='Controllo automatico non ancora avviato.';
+function setMigrationStatus(value){
+  migrationStatus=value;
+  const node=document.getElementById('slide-migration-status');
+  if(node)node.textContent=value;
+}
+function attemptAutomaticMigration(){
+  if(migrationAutoAttempted||migrationBusy||!adminAuth||currentView!=='admin')return;
+  const embedded=(appState.shares||[]).some(s=>(s.inlineSlides||[])
+    .some(sl=>Object.values(sl.images||{}).some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(!embedded)return;
+  migrationAutoAttempted=true;
+  setMigrationStatus('AVVIO AUTOMATICO · Verifico ora lo ZIP GitHub, senza usare il pulsante…');
+  Promise.resolve().then(()=>migrateExistingSlides()).catch(err=>{
+    setMigrationStatus('ERRORE AUTOMATICO: '+(err.message||err));
+    console.error('Avvio migrazione',err);
+  });
+}
+async function migrateExistingSlides(){
+  setMigrationStatus('Pulsante premuto. Controllo dei dati in corso…');
+  if(migrationBusy)return;
+  const candidates=(appState.shares||[]).filter(s=>
+    (s.inlineSlides||[]).some(sl=>Object.values(sl.images||{})
+      .some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(candidates.length!==1){
+    setMigrationStatus('Operazione fermata: risultano '+candidates.length+' relazioni con slide incorporate. Nessuna modifica eseguita.');
+    return;
+  }
+  const candidate=candidates[0],archive='mark_maria_luisa_slides.zip';
+  migrationBusy=true;
+  setMigrationStatus('1/3 · Verifica del file ZIP pubblico in corso…');
+  const btn=document.getElementById('migrate-slide-archive');
+  if(btn){btn.disabled=true;btn.textContent='Verifica ZIP pubblicato su GitHub…';}
+  try{
+    await checkSlideArchive(archive,candidate.inlineSlides.map(s=>s.number));
+    setMigrationStatus('2/3 · Le slide sono disponibili. Aggiornamento Firebase in corso…');
+    await runTransaction(firestore,async tx=>{
+      const ref=doc(firestore,'state','main'),snap=await tx.get(ref);
+      if(!snap.exists())throw Error('Documento principale non disponibile.');
+      const state=snap.data(),share=(state.shares||[]).find(s=>s.id===candidate.id);
+      if(!share||share.inlineSlides?.length!==candidate.inlineSlides.length)
+        throw Error('La relazione è cambiata. Nessun dato eliminato.');
+      const slides=share.inlineSlides.map(s=>({...s,images:{}}));
+      const update={...share,inlineSlides:slides,slideArchive:archive};
+      const shares=state.shares.map(s=>s.id===share.id?update:s);
+      tx.update(ref,{shares});
+    });
+    setMigrationStatus('3/3 · Operazione completata: slide collegate a GitHub, database alleggerito.');
+    alert('Collegamento completato! Verifica la nuova percentuale in alto.');
+  }catch(err){
+    setMigrationStatus('ERRORE: '+(err.code||'')+' '+(err.message||err));
+    console.error('Migrazione slide non riuscita',err);
+  }finally{
+    migrationBusy=false;
+    render();
+  }
+}
+function storageMeter(){
+  const limit=850000; // limite prudenziale dell'importazione nell'app
+  const bytes=new TextEncoder().encode(JSON.stringify(persistedState||{})).length;
+  const remaining=Math.max(0,limit-bytes);
+  const percent=Math.min(100,Math.round(bytes/limit*100));
+  const count=(appState.shares||[]).length;
+  const images=(appState.shares||[]).reduce((total,s)=>total+(s.inlineSlides||[])
+    .reduce((n,slide)=>n+(['it','en','fr','es','pt'].filter(l=>s.slideArchive||Boolean(slide.images?.[l])).length),0),0);
+  const kb=n=>Math.round(n/1024);
+  const near=percent>=75;
+  const div=e('div',{style:{margin:'12px auto',padding:'14px 18px',maxWidth:'820px',borderRadius:'12px',
+    background:'rgba(200,169,110,.07)',border:'1px solid rgba(200,169,110,.3)',
+    color:'#e8dcc8',fontSize:'13px',lineHeight:'1.6'}},
+    e('strong',{style:{color:near?'#ffbb94':'#c8a96e'}},'📦 Spazio condivisioni e slide · '+percent+'%'),
+    e('p',{},'Occupazione stimata: '+kb(bytes)+' KB · Ancora disponibili: circa '+kb(remaining)+' KB'),
+    e('div',{style:{height:'9px',width:'100%',background:'#36313a',borderRadius:'8px',margin:'9px 0'}},
+      e('div',{style:{height:'9px',width:percent+'%',background:near?'#dba07e':'#c8a96e',borderRadius:'8px'}})),
+    e('p',{},count+' condivisioni · '+images+' immagini delle slide nelle varie lingue'),
+    e('p',{style:{color:near?'#ffbb94':'#a09080',fontSize:'12px'}},
+      near?'Attenzione: spazio quasi esaurito. Non caricare un nuovo pacchetto con molte slide senza riorganizzare i file.':
+      'Stima sul documento principale. Aggiornata automaticamente dopo ogni salvataggio o importazione.'),
+    e('p',{style:{color:'#a09080',fontSize:'11px'}},
+      'Il limite di sicurezza di 850 KB è fissato dal codice; non indica lo spazio totale del piano Firebase.'));
+  const needsMigration=(appState.shares||[]).some(s=>(s.inlineSlides||[]).some(sl=>
+    Object.values(sl.images||{}).some(v=>typeof v==='string'&&v.startsWith('data:image/'))));
+  if(needsMigration)div.append(
+    e('p',{style:{color:'#e8dcc8',marginTop:'9px'}},
+      'Archivio GitHub caricato: ora verifica il collegamento senza cancellare le immagini prima del controllo.'),
+    e('p',{id:'slide-migration-status',role:'status',
+      style:{color:'#ffd08b',fontWeight:'bold',marginTop:'7px',whiteSpace:'pre-wrap'}},migrationStatus),
+    e('a',{href:'https://github.com/dan73-73/meeting-coppie/upload/main/slide-archives',
+      target:'_blank',rel:'noopener noreferrer',style:{color:'#e8c87a'}},
+      '1. Apri GitHub per caricare lo ZIP delle slide'),
+    e('div',{style:{marginTop:'8px'}},
+      e('button',{id:'migrate-slide-archive',disabled:migrationBusy,
+        style:{padding:'9px 13px',borderRadius:'8px',border:'1px solid #c8a96e',
+          background:'#282137',color:'#e8dcc8',cursor:'pointer'},
+        onClick:()=>{setMigrationStatus('Richiesta ricevuta. Verifica in corso…');migrateExistingSlides().catch(err=>setMigrationStatus('ERRORE: '+(err.message||err)));}},
+        '2. Verifica archivio e libera spazio Firebase'))
+  );
+  return div;
+}
+// ═══ RENDER ═══
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  const demoBar = e("div", { style:{display:"flex", alignItems:"center", gap:"8px", padding:"8px 16px", background:"rgba(200,169,110,0.06)", borderBottom:"1px solid rgba(200,169,110,0.12)", fontSize:"13px"} },
+    e("span", { style:{color:"#c8a96e", marginRight:"4px"} }, "Vista:"),
+    e("button", {
+      style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${currentView==="admin"?"#c8a96e":"rgba(200,169,110,0.3)"}`, background:currentView==="admin"?"rgba(200,169,110,0.2)":"transparent", color:"#c8a96e", cursor:"pointer", fontSize:"13px"},
+      onClick:()=>{window.location.hash="";currentView="admin";render();}
+    }, "🔐 Admin"),
+    e("button", {
+      style:{padding:"4px 14px", borderRadius:"20px", border:`1px solid ${currentView==="couple"?"#c8a96e":"rgba(200,169,110,0.3)"}`, background:currentView==="couple"?"rgba(200,169,110,0.2)":"transparent", color:"#c8a96e", cursor:"pointer", fontSize:"13px"},
+      onClick:()=>{window.location.hash="couple";currentView="couple";render();}
+    }, "💞 Vista Coppie")
+  );
+  app.appendChild(demoBar);
+  if(currentView==='admin'&&adminAuth)app.appendChild(storageMeter());
+  try {
+    app.appendChild(currentView==="couple" ? renderCouple() : renderAdmin());
+  } catch (err) {
+    console.error("Errore visualizzazione Meeting Coppie:", err);
+    const panel = document.createElement("div");
+    panel.style.cssText = "max-width:750px;margin:32px auto;padding:24px;border:1px solid #b77;border-radius:14px;color:#ffcfba;background:#211421;line-height:1.6;white-space:pre-wrap";
+    panel.textContent = "Errore di visualizzazione: " + (err?.message || String(err)) + "\n\nLe condivisioni salvate non sono state eliminate. Comunica questo messaggio per correggere il problema.";
+    app.appendChild(panel);
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  adminAuth = !!user && user.uid === ADMIN_UID;
+  reading.sync();
+  render();
+  attemptAutomaticMigration();
+});
+
+if(window.location.hash!=='#couple')await initState();
+subscribeState(state => {
+  const previous=appState;
+  persistedState={...DEFAULT_STATE,...state};
+  appState=applyPublicLocalCache(persistedState);
+  loadPublicInBackground(persistedState);
+  reading.sync();
+  const before=previous?.readingFollow,after=appState.readingFollow;
+  // Keep remote buttons mounted while speech updates only the current passage.
+  if(currentView==='admin'&&adminTab==='remote'&&before&&after&&before.index!==after.index){
+    const withoutIndex=s=>({...s,readingFollow:{...s.readingFollow,index:0}});
+    if(JSON.stringify(withoutIndex(previous))===JSON.stringify(withoutIndex(appState))&&reading.updateRemoteProgress())return;
+  }
+  const sameContext=currentView==='couple' && coupleLang && before && after &&
+    before.shareId===after.shareId && before.session===after.session &&
+    before.revision===after.revision && before.index!==after.index &&
+    previous.activeShareId===appState.activeShareId &&
+    previous.displayMode===appState.displayMode &&
+    previous.shares?.length===appState.shares?.length &&
+    previous.shares?.every((s,i)=>s.id===appState.shares[i]?.id &&
+      s.readingBlocks?.length===appState.shares[i]?.readingBlocks?.length &&
+      s.inlineSlides?.length===appState.shares[i]?.inlineSlides?.length) &&
+    previous.sections?.length===appState.sections?.length;
+  if(sameContext && reading.updateHighlight(after.shareId,after.index))return;
+  render();
+  attemptAutomaticMigration();
+});
+</script>
+</body>
+</html>
+
