@@ -825,6 +825,7 @@ function renderAdmin() {
             e('option',{value:'preghieraSabato'},'Sabato mattina – Preghiera: Ti do tutto, Signore (5 lingue)'),
             e('option',{value:'chiusuraVenerdiMarcelo'},'Venerdì sera – Marcelo, programma del sabato e benedizione finale (5 lingue)'),
             e('option',{value:'presentazioneMarkMariaLuisaMarcelo'},'Venerdì sera – Annalisa, presentazione di Mark e Maria Luisa (5 lingue)'),
+            e('option',{value:'markVenerdi'},'Venerdì sera – Mark e Maria Luisa – ROW (18 slide, 5 lingue)'),
             e('option',{value:'presentazionePaulTracyMarcelo'},'Venerdì sera – Marcelo, presentazione di Paul e Tracy Satterfield (5 lingue)'),
             e('option',{value:'ringraziamentoTeamFranciaAnnalisa'},'Venerdì sera – Annalisa, ringraziamento a Philibert e Benigne (5 lingue)'),
             e('option',{value:'colombaAnnalisa'},'Venerdì sera – Annalisa, il simbolo della colomba (5 lingue)'),
@@ -1295,6 +1296,17 @@ async function replaceFridayRowShare(target, bundle) {
 
 async function addPublicMeetingShare(key){
   if(!adminAuth)throw Error('Accesso amministratore richiesto.');
+  if(key==='markVenerdi'){
+    const source=await loadPublicText('mark-maria-luisa-venerdi-2026.json');
+    await replaceFridayRowShare(source,{
+      replaceShareId:'s1793894800504-0',
+      name:'ED_ROW_Mark_Maria_Luisa_Venerdi_Definitivo_slides.zip',
+      batches:Array.from({length:18},(_,index)=>({number:index+1,afterBlock:index-1}))
+    });
+    importItems=[];importZip=null;importError='';importBusy=false;adminTab='list';render();
+    alert('Scheda di Mark e Maria Luisa del venerdì sera aggiornata: 18 slide e testi in cinque lingue.');
+    return;
+  }
   const spec=PUBLIC_MEETING_PRESETS[key];
   if(!spec)throw Error('Relazione non riconosciuta.');
   const source=await loadPublicText(spec.filename);
