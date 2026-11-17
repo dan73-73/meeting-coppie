@@ -12,21 +12,20 @@ textarea, input, select { font-family: Georgia, serif; }
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"></div><div id="fixed-connection-status" hidden style="position:fixed;bottom:0;background:#511;color:white;padding:12px;z-index:9999"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "./fixed-firestore.mjs";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-slides-test.mjs?v=telecomando-stop-20261117';
+import { createReadingIntegration } from './reading-integration-fixed.mjs?v=fixed-full-state-1';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=public-text-pilot-1';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
 import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=punctuation-20261106a';
 
-import {FIXED_RELAY_URL,subscribeFixedState} from './fixed-sync.mjs';
 const firebaseConfig = {
   apiKey: "AIzaSyAnPaUs4KvPsaT0g2M8MH_AdUe9H9zRW5o",
   authDomain: "meeting---coppie.firebaseapp.com",
@@ -82,13 +81,6 @@ async function saveState(state) {
   });
 }
 function subscribeState(cb) {
-  if(window.location.hash==='#couple'){
-    if(!FIXED_RELAY_URL)throw Error('Server di prova non ancora configurato. Usa per ora l’app abituale.');
-    const status=document.createElement('div');
-    status.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#231d30;color:#fff;padding:8px;z-index:9999;text-align:center';
-    document.body.appendChild(status);
-    return subscribeFixedState(FIXED_RELAY_URL,cb,text=>{status.textContent=text;});
-  }
   return onSnapshot(doc(firestore, "state", "main"), (snap) => {
     if (snap.exists()) cb(snap.data());
     else cb(DEFAULT_STATE);
@@ -177,7 +169,6 @@ let importProgress = "";
 const reading = createReadingIntegration({db:firestore,e,getState:()=>appState,isAdmin:()=>adminAuth,getView:()=>currentView,refresh:()=>render()});
 
 window.addEventListener("hashchange", () => {
-  window.location.reload();return;
   currentView = window.location.hash === "#couple" ? "couple" : "admin";
   couplePageIndex = 0;
   reading.sync();
@@ -1787,7 +1778,7 @@ onAuthStateChanged(auth, user => {
   attemptAutomaticMigration();
 });
 
-if(window.location.hash!=='#couple')await initState();
+await initState();
 subscribeState(state => {
   const previous=appState;
   persistedState={...DEFAULT_STATE,...state};

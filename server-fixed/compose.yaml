@@ -2,6 +2,8 @@ services:
   relay:
     build: .
     restart: unless-stopped
+    volumes:
+      - meeting_data:/data
     expose:
       - "8080"
   https:
@@ -17,5 +19,6 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 volumes:
+  meeting_data:
   caddy_data:
   caddy_config:
