@@ -43,7 +43,7 @@ export function preparePublicSave(state){
 }
 export function hydratePublicShare(meta,archive,blocks){
   const translations=archive.translations;
-  const formazioneBlocks=archive.id==='s1791397777272-0' && archive.readingBlocks?.length &&
+  const formazioneBlocks=['s1791397777272-0','s1793826361960-0'].includes(archive.id) && archive.readingBlocks?.length &&
     LANGS.every(lang=>archive.readingBlocks.map(block=>block[lang]||'').join('')===translations?.[lang]?.body)
       ? archive.readingBlocks : null;
   return {...meta,translations,readingBlocks:meta.readingBlocks?.length?meta.readingBlocks:(formazioneBlocks||blocks(translations))};
@@ -52,4 +52,5 @@ export function publicTextMatches(current,archive){
   return LANGS.every(l=>current.translations?.[l]?.body===archive.translations?.[l]?.body &&
     current.translations[l].title===archive.translations[l].title);
 }
+
 
