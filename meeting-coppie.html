@@ -16,15 +16,16 @@ textarea, input, select { font-family: Georgia, serif; }
 <script type="module">
 import {archiveFormazione,FORMAZIONE_ID,FORMAZIONE_FILE} from './formazione-archive-20261118.mjs';
 import {archiveInizioMarcelo,INIZIO_ID} from './inizio-archive-20261118.mjs';
+import {archiveMarkFriday,MARK_FRIDAY_ID} from './mark-friday-archive-20261118.mjs';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "./fixed-firestore.mjs";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-fixed.mjs?v=fixed-full-state-1';
+import { createReadingIntegration } from './reading-integration-fixed.mjs?v=mark-friday-archive-20261118';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
-import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=inizio-archive-20261118';
+import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=mark-friday-archive-20261118';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
 import { suggestBlocks,shortenLongReadingBlocks } from './reading-follow.mjs?v=punctuation-20261106a';
 
@@ -1429,8 +1430,8 @@ async function activateShare(id) {
         hydrated.readingBlocks=prepared.readingBlocks;
         hydrated.inlineSlides=prepared.inlineSlides;
         hydrated.readingSegmentationVersion=2;
-      }else{
-        // No slides: retain the existing short passage behavior.
+      }else if(candidate.id!==MARK_FRIDAY_ID){
+        // Mark del venerdì conserva i passaggi già sincronizzati alle 18 slide.
         hydrated.readingBlocks=shortenLongReadingBlocks(hydrated.readingBlocks,hydrated.translations,105);
       }
       if(!hydrated.readingBlocks?.length)
@@ -1653,6 +1654,12 @@ function setMigrationStatus(value){
   if(node)node.textContent=value;
 }
 function attemptAutomaticMigration(){
+  const markFriday=(appState.shares||[]).find(share=>share.id===MARK_FRIDAY_ID);
+  if(adminAuth && markFriday && !markFriday.publicTextFile &&
+    appState.activeShareId!==MARK_FRIDAY_ID && appState.readingFollow?.shareId!==MARK_FRIDAY_ID) {
+    archiveMarkFriday({firestore,doc,runTransaction,loadPublicText,compactPublicShare})
+      .catch(error=>console.error('Collegamento Mark e Maria Luisa venerdì a GitHub:',error));
+  }
   const inizio=(appState.shares||[]).find(share=>share.id===INIZIO_ID);
   if(adminAuth && inizio && !inizio.publicTextFile &&
     appState.activeShareId!==INIZIO_ID && appState.readingFollow?.shareId!==INIZIO_ID) {
@@ -1822,6 +1829,7 @@ subscribeState(state => {
 </script>
 </body>
 </html>
+
 
 
 

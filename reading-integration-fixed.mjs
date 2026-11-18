@@ -4,7 +4,7 @@ import {slideAt} from './reading-slides-test.mjs?v=italia-centro-five-languages-
 import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks} from './reading-follow.mjs?v=punctuation-20261106a';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=public-slides-20261106';
 import {doc,runTransaction,updateDoc} from './fixed-firestore.mjs';
-import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=public-text-pilot-1';
+import {loadPublicText,hydratePublicShare,compactPublicShare} from './public-relations.mjs?v=mark-friday-archive-20261118';
 
 export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}) {
   const ref=doc(db,'state','main');
@@ -136,7 +136,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
             prepared.readingBlocks=refined.readingBlocks;
             prepared.inlineSlides=refined.inlineSlides;
             prepared.readingSegmentationVersion=2;
-          }else{
+          }else if(next.id!=='s1793894800504-0'){
             prepared.readingBlocks=shortenLongReadingBlocks(usableBlocks(prepared)||suggestBlocks(prepared.translations).blocks,prepared.translations,105);
           }
         }
@@ -433,3 +433,4 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   window.addEventListener('pagehide',stop);
   return {panel,remotePanel,body,sync,stop,updateHighlight,updateRemoteProgress};
 }
+
