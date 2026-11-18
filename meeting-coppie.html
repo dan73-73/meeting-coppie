@@ -14,6 +14,7 @@ textarea, input, select { font-family: Georgia, serif; }
 <body>
 <div id="app"></div><div id="fixed-connection-status" hidden style="position:fixed;bottom:0;background:#511;color:white;padding:12px;z-index:9999"></div>
 <script type="module">
+import {applyFormazioneContentUpdate} from './formazione-content-20261118.mjs';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "./fixed-firestore.mjs";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -1780,6 +1781,7 @@ onAuthStateChanged(auth, user => {
 
 await initState();
 subscribeState(state => {
+  state=applyFormazioneContentUpdate(state);
   const previous=appState;
   persistedState={...DEFAULT_STATE,...state};
   appState=applyPublicLocalCache(persistedState);
@@ -1808,4 +1810,5 @@ subscribeState(state => {
 </script>
 </body>
 </html>
+
 
