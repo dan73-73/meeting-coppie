@@ -1,4 +1,4 @@
-import {createRecoveryMatcher} from './reading-recovery.mjs';
+import {createRecoveryMatcher} from './reading-recovery.mjs?v=prayer-repeats-20261119';
 import {createMicrophone} from './microphone-engine.mjs';
 import {slideAt} from './reading-slides-test.mjs?v=italia-centro-five-languages-20261107';
 import {LANGS,suggestBlocks,shortenLongReadingBlocks,validateBlocks} from './reading-follow.mjs?v=punctuation-20261106a';
@@ -38,7 +38,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       const live=getState().readingFollow,share=active();
       if(!valid(live,share))return;
       if(matcherBlocks!==live.blocks||matcherLanguage!==source){
-        matcher=createRecoveryMatcher(live.blocks,source);
+        matcher=createRecoveryMatcher(live.blocks,source,{followRepeated:share.id==='github-preghiera-sabato-ti-do-tutto-signore-2026'});
         matcherBlocks=live.blocks;matcherLanguage=source;
       }
       for(let i=event.resultIndex;i<event.results.length;i++){
@@ -433,4 +433,5 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
   window.addEventListener('pagehide',stop);
   return {panel,remotePanel,body,sync,stop,updateHighlight,updateRemoteProgress};
 }
+
 

@@ -1,7 +1,7 @@
 import {words} from './reading-follow.mjs';
 
 // Index adjacent passages together so a spoken phrase can cross their boundary.
-export function createRecoveryMatcher(blocks, language) {
+export function createRecoveryMatcher(blocks, language, {followRepeated=false} = {}) {
   const tokens = [];
   const passage = [];
   blocks.forEach((block, index) => {
@@ -20,7 +20,14 @@ export function createRecoveryMatcher(blocks, language) {
           matches.push({start, index: passage[start + length - 1]});
         }
       }
-      // Multiple occurrences remain ambiguous even when one is near the cursor.
+      // Solo per la preghiera: una ripetizione può seguire il passaggio corrente
+      // o quello immediatamente successivo, senza saltare ad altri ritornelli.
+      if (followRepeated && matches.length > 1) {
+        const nearby=matches.filter(match=>match.index>=current && match.index<=current+1);
+        const positions=new Set(nearby.map(match=>match.index));
+        if (positions.size===1) return nearby[0].index;
+      }
+      // Il comportamento delle altre condivisioni resta invariato.
       if (matches.length !== 1) continue;
       const match = matches[0];
       const nearby = match.index >= current && match.index <= current + 4;
@@ -29,3 +36,4 @@ export function createRecoveryMatcher(blocks, language) {
     return null;
   };
 }
+
