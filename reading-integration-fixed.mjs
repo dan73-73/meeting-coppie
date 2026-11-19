@@ -38,7 +38,7 @@ export function createReadingIntegration({db,e,getState,isAdmin,getView,refresh}
       const live=getState().readingFollow,share=active();
       if(!valid(live,share))return;
       if(matcherBlocks!==live.blocks||matcherLanguage!==source){
-        matcher=createRecoveryMatcher(live.blocks,source,{followRepeated:share.id==='github-preghiera-sabato-ti-do-tutto-signore-2026'});
+        matcher=createRecoveryMatcher(live.blocks,source,{followRepeated:['github-preghiera-sabato-ti-do-tutto-signore-2026','github-don-giuseppe-benvenuto-venerdi-2026','github-don-giuseppe-chiusura-venerdi-2026'].includes(share.id)});
         matcherBlocks=live.blocks;matcherLanguage=source;
       }
       for(let i=event.resultIndex;i<event.results.length;i++){

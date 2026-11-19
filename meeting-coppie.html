@@ -25,7 +25,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import {getStorage, ref as storageRef, uploadBytes, getDownloadURL} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
-import { createReadingIntegration } from './reading-integration-fixed.mjs?v=prayer-repeats-20261119';
+import { createReadingIntegration } from './reading-integration-fixed.mjs?v=don-giuseppe-20261119';
 import {checkSlideArchive} from './reading-slides-test.mjs?v=archive-network-retry-v2';
 import {REGION_ITALIA_FILE,loadPublicText,publicTextMatches,compactPublicShare,preparePublicSave,hydratePublicShare} from './public-relations.mjs?v=mark-friday-archive-20261118';
 import {refineReadingForSlides,preparePublicSlideReading} from './reading-slide-segments.mjs?v=madrid-headings-fallback-20261107';
@@ -828,6 +828,8 @@ function renderAdmin() {
             e('option',{value:'introduzioneLilianaAnnalisa'},'Sabato mattina – Annalisa, introduzione di Liliana Verde (5 lingue)'),
             e('option',{value:'aperturaSabatoMarcelo'},'Sabato mattina – Marcelo, buongiorno e inizio lavori (5 lingue)'),
             e('option',{value:'preghieraSabato'},'Sabato mattina – Preghiera: Ti do tutto, Signore (5 lingue)'),
+            e('option',{value:'donGiuseppeBenvenuto'},'Venerdì sera – Presentazione di benvenuto Don Giuseppe (5 lingue)'),
+            e('option',{value:'donGiuseppeChiusura'},'Venerdì sera – Chiusura presentazione Don Giuseppe (5 lingue)'),
             e('option',{value:'chiusuraVenerdiMarcelo'},'Venerdì sera – Marcelo, programma del sabato e benedizione finale (5 lingue)'),
             e('option',{value:'presentazioneMarkMariaLuisaMarcelo'},'Venerdì sera – Annalisa, presentazione di Mark e Maria Luisa (5 lingue)'),
             e('option',{value:'markVenerdi'},'Venerdì sera – Mark e Maria Luisa – ROW (18 slide, 5 lingue)'),
@@ -991,6 +993,22 @@ const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 const PUBLIC_MEETING_PRESETS={
+  donGiuseppeBenvenuto:{
+    filename:'don-giuseppe-benvenuto-venerdi-2026.json',
+    archive:null,
+    id:'github-don-giuseppe-benvenuto-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Presentazione di benvenuto Don Giuseppe',
+    afterBlocks:[]
+  },
+  donGiuseppeChiusura:{
+    filename:'don-giuseppe-chiusura-venerdi-2026.json',
+    archive:null,
+    id:'github-don-giuseppe-chiusura-venerdi-2026',
+    sectionId:'ven-sera',
+    expectedTitle:'Chiusura presentazione Don Giuseppe',
+    afterBlocks:[]
+  },
   introduzioneOlandaAnnalisa:{
     filename:'annalisa-introduzione-olanda-gerard-elena-sabato-mattina-2026.json',
     archive:null,
