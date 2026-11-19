@@ -18,6 +18,7 @@ import {archiveFormazione,FORMAZIONE_ID,FORMAZIONE_FILE} from './formazione-arch
 import {archiveInizioMarcelo,INIZIO_ID} from './inizio-archive-20261118.mjs';
 import {archiveMarkFriday,MARK_FRIDAY_ID} from './mark-friday-archive-20261118.mjs';
 import {restorePrayer,PRAYER_RECOVERY_KEY} from './restore-prayer-20261119.mjs';
+import {restoreInizio,INIZIO_RECOVERY_KEY} from './restore-inizio-20261119.mjs';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "./fixed-firestore.mjs";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -1655,6 +1656,10 @@ function setMigrationStatus(value){
   if(node)node.textContent=value;
 }
 function attemptAutomaticMigration(){
+  if(adminAuth && !persistedState.contentRestorations?.[INIZIO_RECOVERY_KEY]) {
+    restoreInizio({firestore,doc,runTransaction,loadPublicText})
+      .catch(error=>console.error('Ripristino Inizio Marcelo:',error));
+  }
   if(adminAuth && !persistedState.contentRestorations?.[PRAYER_RECOVERY_KEY]) {
     restorePrayer({firestore,doc,runTransaction,loadPublicText})
       .catch(error=>console.error('Ripristino preghiera:',error));
@@ -1834,6 +1839,7 @@ subscribeState(state => {
 </script>
 </body>
 </html>
+
 
 
 
