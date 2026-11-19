@@ -826,6 +826,7 @@ function renderAdmin() {
             e('option',{value:'introduzioneValenciaAnnalisa'},'Sabato mattina – Annalisa, introduzione di Valencia (5 lingue)'),
             e('option',{value:'introduzioneMadridMarcelo'},'Sabato mattina – Marcelo, introduzione di David e Andrea (Madrid, 5 lingue)'),
             e('option',{value:'introduzioneLilianaAnnalisa'},'Sabato mattina – Annalisa, introduzione di Liliana Verde (5 lingue)'),
+            e('option',{value:'portogalloLiliana'},'Sabato mattina – Portogallo, Liliana Verde (22 slide, 5 lingue)'),
             e('option',{value:'aperturaSabatoMarcelo'},'Sabato mattina – Marcelo, buongiorno e inizio lavori (5 lingue)'),
             e('option',{value:'preghieraSabato'},'Sabato mattina – Preghiera: Ti do tutto, Signore (5 lingue)'),
             e('option',{value:'donGiuseppeBenvenuto'},'Venerdì sera – Presentazione di benvenuto Don Giuseppe (5 lingue)'),
@@ -993,6 +994,14 @@ const ITALIA_CENTRO_FILE='italia-centro-roby-silvia.json';
 const ITALIA_CENTRO_SLIDES='ITALIA_CENTRO_MEETING_slides.zip';
 const ITALIA_CENTRO_POSITIONS=[-1,1,2,3,3,4,5,6,7,7,7,11,17,17].map((afterBlock,i)=>({number:i+1,afterBlock}));
 const PUBLIC_MEETING_PRESETS={
+  portogalloLiliana:{
+    filename:'portogallo-liliana-verde-2026.json',
+    archive:'PORTOGALLO_LILIANA_MEETING_slides_5_LINGUE.zip',
+    id:'github-portogallo-liliana-verde-2026',
+    sectionId:'sab-mat',
+    expectedTitle:'Presentazione Retrouvaille Portogallo – Liliana Verde',
+    afterBlocks:[-1, 5, 6, 8, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29, 34]
+  },
   donGiuseppeBenvenuto:{
     filename:'don-giuseppe-benvenuto-venerdi-2026.json',
     archive:null,
