@@ -1449,6 +1449,10 @@ async function toggleSelected(id) {
   await saveState({ ...appState, selectedShareIds: newIds });
 }
 async function deleteShare(id) {
+  const share=(appState.shares||[]).find(s=>s.id===id);
+  if(!share)return;
+  const title=share.translations?.it?.title||share.coupleName||"Senza titolo";
+  if(!window.confirm("Sei sicuro di voler eliminare questa condivisione?\n\n«"+title+"»"))return;
   await saveState({
     ...appState,
     shares:(appState.shares||[]).filter(s=>s.id!==id),
