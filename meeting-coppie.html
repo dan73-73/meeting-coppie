@@ -19,6 +19,7 @@ import {archiveInizioMarcelo,INIZIO_ID} from './inizio-archive-20261118.mjs';
 import {archiveMarkFriday,MARK_FRIDAY_ID} from './mark-friday-archive-20261118.mjs';
 import {restorePrayer,PRAYER_RECOVERY_KEY} from './restore-prayer-20261119.mjs';
 import {restoreInizio,INIZIO_RECOVERY_KEY} from './restore-inizio-20261119.mjs';
+import {linkFranceSlides,FRANCE_SLIDES_ID,FRANCE_SLIDES_ARCHIVE} from './francia-slides-20261123.mjs';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, runTransaction } from "./fixed-firestore.mjs";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -1723,6 +1724,13 @@ function setMigrationStatus(value){
   if(node)node.textContent=value;
 }
 function attemptAutomaticMigration(){
+  const france=(persistedState.shares||[]).find(share=>share.id===FRANCE_SLIDES_ID);
+  if(adminAuth && france && france.slideArchive!==FRANCE_SLIDES_ARCHIVE &&
+    persistedState.activeShareId!==FRANCE_SLIDES_ID && persistedState.readingFollow?.shareId!==FRANCE_SLIDES_ID) {
+    linkFranceSlides({firestore,doc,runTransaction,loadPublicText,checkSlideArchive})
+      .catch(error=>console.error('Collegamento slide Francia:',error));
+  }
+
   if(adminAuth && !persistedState.contentRestorations?.[INIZIO_RECOVERY_KEY]) {
     restoreInizio({firestore,doc,runTransaction,loadPublicText})
       .catch(error=>console.error('Ripristino Inizio Marcelo:',error));
