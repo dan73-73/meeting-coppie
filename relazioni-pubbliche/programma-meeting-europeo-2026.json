@@ -1,0 +1,33 @@
+{
+  "shares": [
+    {
+      "sectionId": "ven-sera",
+      "coupleName": "",
+      "day": "Venerdì 27 novembre 2026",
+      "time": "",
+      "speakerLanguage": "it",
+      "translations": {
+        "it": {
+          "title": "Programma del Meeting Europeo",
+          "body": "Venerdì 27 novembre\n18:30 | Accoglienza\n19:00 | Cena\n20:45 | Attività\n\nSabato 28 novembre – mattina\n07:30 | Messa\n08:10 | Colazione\n09:15 | Inizio attività\n10:30 | Pausa\n10:45 | Inizio attività\n12:30 | Pranzo\n\nSabato 28 novembre – pomeriggio e sera\n15:00 | Inizio attività\n16:15 | Pausa\n16:45 | Inizio attività\n18:30 | Pausa\n19:00 | Cena\n20:45 | Veglia di preghiera\n\nDomenica 29 novembre\n07:45 | Colazione\n08:30 | A piedi verso la chiesa con i bagagli\n08:45 | Messa\n09:45 | Trasferimento a Versailles\n10:30 | Visita della Reggia di Versailles\n12:15 | Pausa e ritrovo al bus\n12:45 | Trasferimento a Parigi\n13:45 | Pausa / pranzo al sacco\n14:00 | OPZIONE: Visita a Parigi – bateau mouche\n15:10 | OPZIONE: Verso gli Champs-Élysées"
+        },
+        "fr": {
+          "title": "Programme de la Rencontre européenne",
+          "body": "Vendredi 27 novembre\n18:30 | Accueil\n19:00 | Dîner\n20:45 | Activités\n\nSamedi 28 novembre – matin\n07:30 | Messe\n08:10 | Petit-déjeuner\n09:15 | Début des activités\n10:30 | Pause\n10:45 | Début des activités\n12:30 | Déjeuner\n\nSamedi 28 novembre – après-midi et soirée\n15:00 | Début des activités\n16:15 | Pause\n16:45 | Début des activités\n18:30 | Pause\n19:00 | Dîner\n20:45 | Veillée de prière\n\nDimanche 29 novembre\n07:45 | Petit-déjeuner\n08:30 | À pied vers l’église avec les bagages\n08:45 | Messe\n09:45 | Départ pour Versailles\n10:30 | Visite du château de Versailles\n12:15 | Pause et rendez-vous au car\n12:45 | Départ pour Paris\n13:45 | Pause / déjeuner pique-nique\n14:00 | OPTION : Visite de Paris en bateau-mouche\n15:10 | OPTION : Direction les Champs-Élysées"
+        },
+        "es": {
+          "title": "Programa del Encuentro Europeo",
+          "body": "Viernes 27 de noviembre\n18:30 | Acogida\n19:00 | Cena\n20:45 | Actividades\n\nSábado 28 de noviembre – mañana\n07:30 | Misa\n08:10 | Desayuno\n09:15 | Inicio de las actividades\n10:30 | Pausa\n10:45 | Inicio de las actividades\n12:30 | Comida\n\nSábado 28 de noviembre – tarde y noche\n15:00 | Inicio de las actividades\n16:15 | Pausa\n16:45 | Inicio de las actividades\n18:30 | Pausa\n19:00 | Cena\n20:45 | Vigilia de oración\n\nDomingo 29 de noviembre\n07:45 | Desayuno\n08:30 | A pie hacia la iglesia con el equipaje\n08:45 | Misa\n09:45 | Traslado a Versalles\n10:30 | Visita al Palacio de Versalles\n12:15 | Pausa y encuentro junto al autobús\n12:45 | Traslado a París\n13:45 | Pausa / comida de pícnic\n14:00 | OPCIÓN: Visita a París en bateau-mouche\n15:10 | OPCIÓN: Hacia los Campos Elíseos"
+        },
+        "en": {
+          "title": "European Meeting Programme",
+          "body": "Friday 27 November\n18:30 | Welcome\n19:00 | Dinner\n20:45 | Activities\n\nSaturday 28 November – morning\n07:30 | Mass\n08:10 | Breakfast\n09:15 | Start of activities\n10:30 | Break\n10:45 | Start of activities\n12:30 | Lunch\n\nSaturday 28 November – afternoon and evening\n15:00 | Start of activities\n16:15 | Break\n16:45 | Start of activities\n18:30 | Break\n19:00 | Dinner\n20:45 | Prayer vigil\n\nSunday 29 November\n07:45 | Breakfast\n08:30 | Walk to the church with luggage\n08:45 | Mass\n09:45 | Transfer to Versailles\n10:30 | Visit to the Palace of Versailles\n12:15 | Break and meeting at the coach\n12:45 | Transfer to Paris\n13:45 | Break / packed lunch\n14:00 | OPTION: Paris sightseeing by bateau-mouche\n15:10 | OPTION: Head towards the Champs-Élysées"
+        },
+        "pt": {
+          "title": "Programa do Encontro Europeu",
+          "body": "Sexta-feira, 27 de novembro\n18:30 | Acolhimento\n19:00 | Jantar\n20:45 | Atividades\n\nSábado, 28 de novembro – manhã\n07:30 | Missa\n08:10 | Pequeno-almoço\n09:15 | Início das atividades\n10:30 | Pausa\n10:45 | Início das atividades\n12:30 | Almoço\n\nSábado, 28 de novembro – tarde e noite\n15:00 | Início das atividades\n16:15 | Pausa\n16:45 | Início das atividades\n18:30 | Pausa\n19:00 | Jantar\n20:45 | Vigília de oração\n\nDomingo, 29 de novembro\n07:45 | Pequeno-almoço\n08:30 | A pé até à igreja com a bagagem\n08:45 | Missa\n09:45 | Transferência para Versalhes\n10:30 | Visita ao Palácio de Versalhes\n12:15 | Pausa e encontro junto ao autocarro\n12:45 | Transferência para Paris\n13:45 | Pausa / almoço de piquenique\n14:00 | OPÇÃO: Visita a Paris de bateau-mouche\n15:10 | OPÇÃO: Em direção aos Champs-Élysées"
+        }
+      }
+    }
+  ]
+}
